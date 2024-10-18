@@ -1,0 +1,795 @@
+from comunas import Comunas_list
+import requests,json
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QFrame, QHBoxLayout, QListWidget, QPushButton, QLabel, QScrollArea, QSpacerItem, QSizePolicy, QTextEdit, QDateEdit, QGridLayout, QSplitter, QComboBox, QLineEdit, QCheckBox, QMessageBox, QListWidgetItem,QInputDialog
+from PyQt5.QtWebEngineWidgets import QWebEngineView
+from PyQt5.QtCore import QUrl, Qt, QDate, QEvent
+from PyQt5.QtGui import QIntValidator
+from UsuarioModal import UsuarioModal
+from InscriptionModal import InscriptionModal
+from FindDialog import FindDialog
+from DetallesModal import DetallesModal
+from PyQt5.QtGui import QValidator, QRegExpValidator
+from PyQt5.QtCore import QRegExp
+
+
+API_BASE_URL = 'https://loverman.net/dbase/dga2024/api/api.php?action='
+api_base_url = API_BASE_URL
+
+class NextWindow(QMainWindow):
+    def __init__(self, user_id, user_name,Cantidad):
+        super().__init__()
+        self.user_id = user_id
+        self.current_trabajo_id = None 
+        self.current_formulario_id = None
+        self.modal_abierto = False
+        self.user_name = user_name
+
+        self.API_BASE_URL = 'https://loverman.net/dbase/dga2024/api/api.php?action='
+        self.api_base_url = self.API_BASE_URL
+
+        self.setGeometry(1, 30, 1980, 1080)
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.layout = QHBoxLayout(self.central_widget)
+        self.pdf_paths = []
+        self.entries = []
+        self.form_widget = QWidget()
+        self.form_layout = QVBoxLayout(self.form_widget)
+        self.create_left_frame()
+        self.create_middle_frame()
+        self.create_right_frame()
+        self.set_title(Cantidad)
+        
+    def set_title(self,Cantidad):
+        self.setWindowTitle(f"DPs Formulario ({self.user_name}) Terminados: {Cantidad}")
+
+        
+    def buscar_rut_api(self, rut):
+        try:
+            url = f"http://loverman.net/api/buscar_rut.php?rut={rut}"
+            response = requests.get(url)
+            response.raise_for_status()
+            return True, response.json()
+        except Exception as e:
+            print(f"Error al buscar RUT: {e}")
+            return False, {}
+
+    def create_left_frame(self):
+        self.left_frame = QFrame(self)
+        self.left_frame.setFrameShape(QFrame.StyledPanel)
+        self.left_frame.setMaximumWidth(300)
+        self.layout.addWidget(self.left_frame)
+
+        self.left_layout = QVBoxLayout(self.left_frame)
+
+        self.dir_label = QLabel("Seleccione trabajo", self)
+        self.left_layout.addWidget(self.dir_label)
+
+        self.dir_listwidget = QListWidget(self)
+        self.dir_listwidget.setMaximumHeight(300)
+        self.dir_listwidget.itemSelectionChanged.connect(self.on_directory_select)
+        self.left_layout.addWidget(self.dir_listwidget)
+
+        self.dir_label = QLabel("Seleccione PDF", self)
+        self.left_layout.addWidget(self.dir_label)
+        self.pdf_listbox = QListWidget(self)
+        self.pdf_listbox.itemSelectionChanged.connect(self.on_pdf_select)
+        self.left_layout.addWidget(self.pdf_listbox)
+        
+        self.load_trabajos()
+
+    def load_trabajos(self):
+        try:
+            self.dir_listwidget.clear()
+            response = requests.get(f'{API_BASE_URL}getTrabajos&user_id={self.user_id}')
+            response.raise_for_status()
+            trabajos = response.json()
+            for trabajo in trabajos:
+                item = QListWidgetItem(f"{trabajo['numero']} - {trabajo['anio']} ({trabajo['estado']})")
+                item.setData(Qt.UserRole, trabajo['id'])
+                self.dir_listwidget.addItem(item)
+        except requests.RequestException as e:
+            self.show_message("Error", "Error al cargar trabajos", str(e))
+
+    def load_formulario(self, trabajo_id):
+        try:
+            response = requests.get(f'{API_BASE_URL}getFormulario&trabajo_id={trabajo_id}')
+            response.raise_for_status()
+            formulario = response.json()
+            if 'id' in formulario:
+                self.current_formulario_id = formulario['id']
+                print(f"Id 2 Del formulario:{self.current_formulario_id}")
+                self.fill_form(formulario)
+
+            else:
+                self.fill_form(formulario)
+
+                self.current_formulario_id = formulario['id']
+                print(f"Id 1 Del formulario:{self.current_formulario_id}")
+        except requests.RequestException as e:
+            self.show_message("Error", "Error al cargar el formulario", str(e))
+            
+    def fill_form(self, formulario):
+        self.clear_form()
+
+        field_mapping = {
+            'f_inscripcion': 'F_INSCRIPCION',
+            'comuna': 'COMUNA',
+            'cbr': 'CBR',
+            'foja': 'FOJA',
+            'v': 'V',
+            'numero': 'N°',
+            'anio': 'AÑO',
+            'naturaleza_agua': 'NATURALEZA DEL AGUA',
+            'tipo_derecho': 'TIPO DE DERECHO',
+            'nombre_comunidad': 'NOMBRE DE COMUNIDAD',
+            'proyecto_parcelacion': 'PROYECTO DE PARCELACIÓN',
+            'sitio': 'SITIO',
+            'parcela': 'PARCELA',
+            'ejercicio_derecho': 'EJERCICIO DEL DERECHO',
+            'metodo_extraccion': 'METODO DE EXTRACCION',
+            'cantidad': 'CANTIDAD',
+            'unidad': 'UNIDAD',
+            'utm_norte': 'UTM NORTE',
+            'utm_este': 'UTM ESTE',
+            'unidad_utm': 'UNIDAD UTM',
+            'huso': 'HUSO',
+            'datum': 'DATUM',
+            'pto_conocidos_captacion': 'PTOS CONOCIDOS DE CAPTACION',
+            #'rio': 'RIO',
+            #'rio_otro': 'RIO OTRO',
+            'comentario': 'COMENTARIO',
+            'user_rut': 'RUT',
+            'user_nac': 'NAC',
+            'user_tipo': 'TIPO',
+            'user_genero': 'GENERO',
+            'user_nombre': 'NOMBRE',
+            'user_paterno': 'PARTERNO',
+            'user_materno': 'MATERNO'
+        }
+        for json_key, form_label in field_mapping.items():
+            if json_key in formulario:
+                entry_value = formulario[json_key]
+                
+                if json_key == 'user_rut' and entry_value:
+                    if "-" not in entry_value:
+                        clean_rut = entry_value.replace(".", "").replace("-", "")
+                        
+                        if 7 <= len(clean_rut) <= 9:
+                            entry_value = self.calcular_dv(clean_rut)
+
+                for label, entry in self.entries:
+                    if label == form_label:
+                        if isinstance(entry, QLineEdit):
+                            entry.setText(entry_value if entry_value is not None else "")
+                        elif isinstance(entry, QComboBox):
+                            index = entry.findText(entry_value if entry_value is not None else "")
+                            if index >= 0:
+                                entry.setCurrentIndex(index)
+                        elif isinstance(entry, QCheckBox):
+                            entry.setChecked(entry_value.lower() in ['true', '1'] if entry_value is not None else False)
+                        elif isinstance(entry, QTextEdit):
+                            entry.setPlainText(entry_value if entry_value is not None else "")
+                        elif isinstance(entry, QDateEdit) and entry_value:
+                            entry.setDate(QDate.fromString(entry_value, "dd/MM/yyyy"))
+
+        print("Formulario cargado:", formulario)
+
+
+    def on_directory_select(self):
+        selected_items = self.dir_listwidget.selectedItems()
+        if selected_items:
+            selected_item = selected_items[0]
+            selected_trabajo_id = selected_item.data(Qt.UserRole)
+            
+            if self.current_trabajo_id is not None and self.current_trabajo_id != selected_trabajo_id:
+                self.save_form(True)
+
+            self.current_trabajo_id = selected_trabajo_id
+            print(f"Trabajo seleccionado: {selected_trabajo_id}")
+            self.load_formulario(selected_trabajo_id)
+            self.clear_pdf_viewer()
+            self.load_pdfs(selected_trabajo_id)
+            
+
+    def load_pdfs(self, trabajo_id):
+        try:
+            response = requests.get(f'{API_BASE_URL}getPDFs&trabajo_id={trabajo_id}')
+            response.raise_for_status()
+            pdfs = response.json()
+            self.pdf_listbox.clear()
+            self.pdf_paths = []
+            for pdf in pdfs:
+                self.pdf_listbox.addItem(pdf['nombre'])
+                self.pdf_paths.append(pdf['ruta'])
+        except requests.RequestException as e:
+            self.show_message("Error", "Error al cargar PDFs", str(e))
+
+    def on_pdf_select(self):
+        selected_items = self.pdf_listbox.selectedItems()
+        if selected_items:
+            selected_item = selected_items[0]
+            index = self.pdf_listbox.row(selected_item)
+            pdf_url = self.pdf_paths[index]
+            print(f"PDF seleccionado: {pdf_url}")
+            self.load_pdf(pdf_url)
+
+    def load_pdf(self, encoded_pdf_path):
+        try:
+            pdf_url = f"https://loverman.net/dbase/dga2024/viewer.html?file={encoded_pdf_path}#page=1"
+            self.browser.load(QUrl(pdf_url))
+            print(f"Mostrando PDF desde URL: {pdf_url}")
+            self.load_text_file(encoded_pdf_path)
+        except Exception as e:
+            self.show_message("Error", "Error al cargar PDF", str(e))
+
+    def load_text_file(self, pdf_url):
+        txt_url = pdf_url.replace('.pdf', '.txt').replace('.PDF', '.txt')
+        try:
+            response = requests.get(txt_url)
+            response.raise_for_status()
+            if response.status_code == 200:
+                content = response.text
+                self.text_edit.setText(content)
+            else:
+                self.text_edit.clear()
+        except requests.RequestException as e:
+            print(f"Error al cargar el archivo de texto: {e}")
+            self.text_edit.clear()
+
+    def navigate_pdf(self, direction):
+        if self.pdf_doc:
+            self.page_number = max(0, min(self.pdf_doc.page_count - 1, self.page_number + direction))
+            self.show_pdf_page(self.page_number)
+            self.page_label.setText(f"Página {self.page_number + 1} de {self.pdf_doc.page_count}")
+            self.load_text_file()
+
+    def create_middle_frame(self):
+        self.middle_frame = QFrame(self)
+        self.middle_frame.setFrameShape(QFrame.StyledPanel)
+        self.middle_frame.setMaximumWidth(700)
+        self.middle_frame.setMinimumWidth(600)
+        self.layout.addWidget(self.middle_frame)
+
+        self.middle_layout = QVBoxLayout(self.middle_frame)
+        self.middle_layout.setSpacing(5)
+
+        self.form_label = QLabel("Formulario", self)
+        self.middle_layout.addWidget(self.form_label)
+
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.middle_layout.addWidget(self.scroll_area)
+        self.form_widget = QWidget()
+        self.scroll_area.setWidget(self.form_widget)
+        self.form_layout = QVBoxLayout(self.form_widget)
+
+        # APARTADO: INSCRIPCIONES
+        self.add_section_title("INSCRIPCIONES")
+        self.inscriptions_layout = QGridLayout()
+        self.form_layout.addLayout(self.inscriptions_layout)
+
+        self.add_input_field("F_INSCRIPCION", "date", parent_layout=self.inscriptions_layout, row=0, col=0)
+        self.add_input_field("COMUNA", "select", Comunas_list, parent_layout=self.inscriptions_layout, row=1, col=0)  # Agrega las comunas correspondientes
+        self.add_input_field("CBR", "text", parent_layout=self.inscriptions_layout, row=2, col=0, size=0)
+        self.add_input_field("FOJA", "number", parent_layout=self.inscriptions_layout, row=3, col=0, size=0)
+        self.add_input_field("V", "checkbox", parent_layout=self.inscriptions_layout, row=3, col=1, size=0)
+        self.add_input_field("N°", "number", parent_layout=self.inscriptions_layout, row=3, col=2, size=0)
+        self.add_input_field("AÑO", "number", parent_layout=self.inscriptions_layout, row=3, col=3, size=0)
+        
+        self.add_inscription_button = QPushButton("Agregar Inscripción", self)
+        self.add_inscription_button.clicked.connect(self.open_inscription_modal)
+        self.form_layout.addWidget(self.add_inscription_button)
+
+        # APARTADO: TIPO DE EXPEDIENTE
+        self.add_section_title("TIPO DE EXPEDIENTE")
+        self.add_input_field("NATURALEZA DEL AGUA", "select", ['--','SUPERFICIAL', 'SUBTERRANEA',"S. Y DETENIDA","SUP. Y CORRIENTE","SUP. CORRIENTES/DETENIDAS"])
+        self.add_input_field("TIPO DE DERECHO", "select", ['--','CONSUNTIVO','NO CONSUNTIVO'])
+        self.add_input_field("NOMBRE DE COMUNIDAD", "text")
+        self.add_input_field("PROYECTO DE PARCELACIÓN", "text")
+        self.add_input_field("SITIO", "text")
+        self.add_input_field("PARCELA", "text")
+
+        # APARTADO: USUARIOS
+        self.add_section_title("USUARIOS")
+        self.user_layout = QGridLayout()
+        self.form_layout.addLayout(self.user_layout)
+
+        self.add_input_field("RUT", "text", parent_layout=self.user_layout, row=0, col=0)
+        self.add_button_rut = QPushButton("Buscar", self)
+        self.add_button_rut.clicked.connect(self.handle_rut_search)
+        self.user_layout.addWidget(self.add_button_rut, 0, 1)
+
+        self.add_input_field("NAC", "select", ['--','CHILENA','EXTRANJERA'], parent_layout=self.user_layout, row=1, col=0)
+        self.add_input_field("TIPO", "select", ['--','NATURAL','JURIDICA'], parent_layout=self.user_layout, row=1, col=1)
+        self.add_input_field("GENERO", "select", ['--','F','M'], parent_layout=self.user_layout, row=2, col=0)
+        self.add_input_field("NOMBRE", "text", parent_layout=self.user_layout, row=2, col=1)
+        self.add_input_field("PARTERNO", "text", parent_layout=self.user_layout, row=3, col=0)
+        self.add_input_field("MATERNO", "text", parent_layout=self.user_layout, row=3, col=1)
+        self.add_user_button = QPushButton("Agregar Usuarios", self)
+        self.add_user_button.clicked.connect(self.open_usuarios_modal)
+        self.form_layout.addWidget(self.add_user_button)
+
+        # APARTADO: EJERCICIO
+        self.add_section_title("EJERCICIO")
+        self.add_input_field("EJERCICIO DEL DERECHO", "select", ['--','PERMANENTE Y CONTINUO', 'EVENTUAL Y CONTINUO','PERM. Y CONT. Y PROVICIONALES','SIN EJERCICIO','PERM. Y DISC. Y PROVICIONALES','PERM Y ALTER. Y PROVICIONALES','EVENTUAL Y DISCONTINUO','EVENTUAL Y ALTERNADO','PERMANENTE Y DISCONTINUO','PERMANENTE Y ALTERNADO'])
+        self.add_input_field("METODO DE EXTRACCION", "select", ['--','MECANICA','GRAVITACIONAL','MECANICA Y/O GRAVITACIONAL'])
+
+        # APARTADO: CAUDAL
+        self.add_section_title("CAUDAL")
+        self.add_input_field("CANTIDAD", "text")
+        self.add_input_field("UNIDAD", "select", ['--','LT/S','M3/S','MM3/AÑO','M3/AÑO','LT/MIN','M3/H','LT/H','M3/MES','ACCIONES','M3/DIA','M3/MIN','LT/DIA','REGADORES','CUADRAS','TEJAS','HORAS TURNO','%','PARTES','LT/MES','MMM3/MES','M3/HA/MES', 'ETC'])
+        self.add_input_field("UTM NORTE", "text")
+        self.add_input_field("UTM ESTE", "text")
+        self.add_input_field("UNIDAD UTM", "select", ['--','KM', 'MTS'])
+        self.add_input_field("HUSO", "select", ['--','18', '19'])
+        self.add_input_field("DATUM", "select", ['--','56', '69','84'])
+
+        # APARTADO: REFERENCIAS
+        self.add_section_title("REFERENCIAS")
+        self.add_input_field("PTOS CONOCIDOS DE CAPTACION", "textarea")
+
+        self.add_detalles_button = QPushButton("Agregar Detalles", self)
+        self.add_detalles_button.clicked.connect(self.open_detalles_modal)
+        self.form_layout.addWidget(self.add_detalles_button)
+
+        # APARTADO: UBICACION HIDROGRAFICA
+        # self.add_section_title("UBICACION HIDROGRAFICA")
+        # self.add_input_field("RIO", "select", ["--"])  # Crear función para obtener los ríos según la comuna seleccionada
+        # self.add_input_field("RIO OTRO", "text")
+
+        # APARTADO: INTERNO
+        self.add_section_title("INTERNO")
+        self.add_input_field("COMENTARIO", "textarea")
+
+        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.form_layout.addItem(spacer)
+
+        self.save_button = QPushButton("Guardar", self)
+        self.save_button.clicked.connect(self.save_form)
+        self.middle_layout.addWidget(self.save_button)
+
+        self.submit_button = QPushButton("Registrar", self)
+        self.submit_button.clicked.connect(self.submit_form)
+        self.middle_layout.addWidget(self.submit_button)
+        
+    def handle_rut_search(self):
+        rut_entry = None
+        for label, entry in self.entries:
+            if label == "RUT":
+                rut_entry = entry
+                break
+
+        if rut_entry:
+            rut = rut_entry.text().split("-")[0]
+            success, data = self.buscar_rut_api(rut)
+            print(f"{success} - {data}")
+            if success:
+                self.fill_user_fields(data)
+            else:
+                self.show_message("Info", "Buscar RUT", "No se encontraron datos para el RUT ingresado.")
+                
+    def fill_user_fields(self, data):
+        field_mapping = {
+            'NAC': 'NAC',
+            'TIPO': 'TIPO',
+            'GENERO': 'GENERO',
+            'NOMBRE': 'Nombre',
+            'PARTERNO': 'Apa',
+            'MATERNO': 'Ama'
+        }
+
+        for json_key, form_label in field_mapping.items():
+            entry_value = data.get(form_label, "")
+            for label, entry in self.entries:
+                if label == json_key:
+                    if isinstance(entry, QLineEdit):
+                        entry.setText(entry_value)
+                    elif isinstance(entry, QComboBox):
+                        index = entry.findText(entry_value)
+                        if index >= 0:
+                            entry.setCurrentIndex(index)
+                            
+    def create_right_frame(self):
+        self.right_frame = QFrame(self)
+        self.right_frame.setFrameShape(QFrame.StyledPanel)
+        self.layout.addWidget(self.right_frame, stretch=1)
+
+        self.right_layout = QVBoxLayout(self.right_frame)
+
+        self.top_frame = QFrame(self)
+        self.right_layout.addWidget(self.top_frame)
+
+        self.top_layout = QHBoxLayout(self.top_frame)
+
+        self.splitter = QSplitter(Qt.Vertical)
+        self.right_layout.addWidget(self.splitter, stretch=1)
+
+        self.browser = QWebEngineView()
+        self.splitter.addWidget(self.browser)
+
+        self.text_edit = QTextEdit(self)
+        self.splitter.addWidget(self.text_edit)
+        
+        self.splitter.setSizes([800, 400])
+
+        self.find_dialog = FindDialog(self)
+        self.text_edit.setFocus()
+        self.text_edit.installEventFilter(self)
+    
+    def eventFilter(self, source, event):
+        if event.type() == QEvent.KeyPress:
+            if event.key() == Qt.Key_F and event.modifiers() == Qt.ControlModifier:
+                self.find_dialog.show()
+                return True
+        return super().eventFilter(source, event)
+
+    def add_input_field(self, label_text, field_type="text", options=None, parent_layout=None, row=0, col=0, size=None):
+        if parent_layout is None:
+            parent_layout = self.form_layout
+
+        container = QFrame(self.form_widget)
+        container_layout = QHBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(5)
+
+        label = QLabel(label_text)
+        container_layout.addWidget(label)
+
+        field_type = field_type.strip().lower()
+
+        if field_type == "text":
+            entry = QLineEdit()
+            if size:
+                entry.setFixedWidth(size)
+            #if label_text == "RUT":
+            #    entry.focusOutEvent = lambda event: self.on_rut_focus_out(entry, event)
+            if label_text == "RUT":
+                entry.focusOutEvent = lambda event: self.on_rut_focus_out(entry, event)
+                
+        elif field_type == "number":
+            entry = QLineEdit()
+            entry.setValidator(QIntValidator())
+            if size:
+                entry.setFixedWidth(size)
+        elif field_type == "select":
+            entry = QComboBox()
+            if options:
+                entry.addItems(options)
+        elif field_type == "date":
+            entry = QLineEdit()
+            entry.setPlaceholderText("--/--/----")
+            date_regex = QRegExp(r"\d{0,8}")
+            date_validator = QRegExpValidator(date_regex)
+            entry.setValidator(date_validator)
+            entry.textChanged.connect(self.auto_format_date)
+        elif field_type == "checkbox":
+            entry = QCheckBox()
+        elif field_type == "textarea":
+            entry = QTextEdit()
+            entry.setFixedHeight(100)
+        else:
+            raise ValueError(f"Tipo de campo desconocido: {field_type}")
+
+        container_layout.addWidget(entry)
+        self.entries.append((label_text, entry))
+
+        if isinstance(parent_layout, QGridLayout):
+            parent_layout.addWidget(container, row, col)
+        else:
+            parent_layout.addWidget(container)
+        print(f"Campo agregado: {label_text}, tipo: {field_type}")
+    
+    def auto_format_date(self, text):
+        clean_text = text.replace("/", "")
+        
+        if len(clean_text) > 8:
+            clean_text = clean_text[:8]
+
+        formatted_text = ""
+        cursor_position = self.sender().cursorPosition()
+        
+        if len(clean_text) >= 2:
+            formatted_text += clean_text[:2] + "/"
+        else:
+            formatted_text += clean_text
+        
+        if len(clean_text) >= 4:
+            formatted_text += clean_text[2:4] + "/"
+        elif len(clean_text) > 2:
+            formatted_text += clean_text[2:4]
+        
+        if len(clean_text) > 4:
+            formatted_text += clean_text[4:]
+        
+        prev_length = len(self.sender().text())
+        
+        self.sender().blockSignals(True)
+        self.sender().setText(formatted_text)
+        self.sender().blockSignals(False)
+        
+        if len(formatted_text) > prev_length:
+            cursor_position += 1
+        elif len(formatted_text) < prev_length:
+            cursor_position -= 1
+
+        self.sender().setCursorPosition(cursor_position)
+
+    def on_rut_focus_out(self, entry, event):
+        try:
+            if "-" in entry.text():
+                QLineEdit.focusOutEvent(entry, event)
+                return
+
+            clean_text = entry.text().replace(".", "").replace("-", "")
+
+            if 7 <= len(clean_text) <= 9:
+                formatted_rut = self.calcular_dv(clean_text)
+
+            entry.blockSignals(True)
+            entry.setText(formatted_rut)
+            entry.blockSignals(False) 
+        except:
+            pass
+        QLineEdit.focusOutEvent(entry, event)
+
+
+    def formatear_rut_en_vivo(self, text):
+        clean_text = text.replace(".", "").replace("-", "")
+        
+        if len(clean_text) > 8:
+            clean_text = clean_text[:8] + "-" + clean_text[8:]
+        
+        formatted_rut = ""
+        if len(clean_text) >= 4:
+            formatted_rut += clean_text[:-3].replace(r"\B(?=(\d{3})+(?!\d))", ".") + "-" + clean_text[-1]
+        else:
+            formatted_rut += clean_text
+        
+        return formatted_rut
+    
+
+    def calcular_dv(self, rut):
+        try:
+            clean_rut = rut.replace(".", "").replace("-", "").replace(" ", "")
+            if clean_rut[-1].lower() == 'k':
+                return clean_rut[:-1] + "-K"
+            
+            base_rut = clean_rut[:-1]
+            last_digit = clean_rut[-1].upper()
+
+            calculated_dv = self._calculate_verifier_digit(base_rut)
+            if last_digit == calculated_dv:
+                return base_rut + "-" + last_digit
+            else:
+                calculated_dv_full = self._calculate_verifier_digit(clean_rut)
+                return clean_rut + "-" + calculated_dv_full
+
+        except (ValueError, IndexError) as e:
+            print(f"Error al calcular el dígito verificador: {e}")
+            return rut
+        
+    def _calculate_verifier_digit(self, rut):
+        reversed_digits = map(int, reversed(rut))
+        factors = [2, 3, 4, 5, 6, 7] 
+        s = sum(d * f for d, f in zip(reversed_digits, factors * 3))
+        dv = 11 - (s % 11)
+        if dv == 11:
+            return '0'
+        elif dv == 10:
+            return 'K'
+        else:
+            return str(dv)
+
+    def add_section_title(self, title):
+        title_label = QLabel(title)
+        title_label.setStyleSheet("font-weight: bold; font-size: 16px; margin-top: 10px;")
+        self.form_layout.addWidget(title_label)
+
+    def add_inscription(self):
+        count = len([entry for entry in self.entries if entry[0].startswith("F_INSCRIPCION")]) + 1
+        self.add_input_field(f"F_INSCRIPCION_{count}", "date")
+        self.add_input_field(f"COMUNA_{count}", "select", ["--", "Comuna1", "Comuna2"])
+        self.add_input_field(f"CBR_{count}", "text")
+        self.add_input_field(f"FOJA_{count}", "number")
+        self.add_input_field(f"V_{count}", "checkbox")
+        self.add_input_field(f"N°_{count}", "number")
+        self.add_input_field(f"AÑO_{count}", "number")
+
+    def add_user(self):
+        count = len([entry for entry in self.entries if entry[0].startswith("RUT")]) + 1
+        self.add_input_field(f"RUT_{count}", "text")
+        self.add_input_field(f"NAC_{count}", "select", ['--','CHILENA','EXTRANJERA'])
+        self.add_input_field(f"TIPO_{count}", "select", ['--','NATURAL','JURIDICA'])
+        self.add_input_field(f"GENERO_{count}", "select", ['--','F','M'])
+        self.add_input_field(f"NOMBRE_{count}", "text")
+        self.add_input_field(f"PARTERNO_{count}", "text")
+        self.add_input_field(f"MATERNO_{count}", "text")
+
+    def buscar_rut(self):
+        rut = None
+        for label_text, entry in self.entries:
+            if label_text.startswith("RUT"):
+                rut = entry.text()
+                break
+        self.show_message("Info", "Buscar RUT", f"Buscando información para RUT: {rut}")
+
+    def save_form(self,silence=False):
+        form_data = {}
+        for label_text, entry in self.entries:
+            if isinstance(entry, QLineEdit):
+                form_data[label_text] = {"type": "QLineEdit", "value": entry.text()}
+            elif isinstance(entry, QComboBox):
+                form_data[label_text] = {"type": "QComboBox", "value": entry.currentText()}
+            elif isinstance(entry, QCheckBox):
+                form_data[label_text] = {"type": "QCheckBox", "value": entry.isChecked()}
+            elif isinstance(entry, QTextEdit):
+                form_data[label_text] = {"type": "QTextEdit", "value": entry.toPlainText()}
+            elif isinstance(entry, QDateEdit):
+                form_data[label_text] = {"type": "QDateEdit", "value": entry.date().toString("dd/MM/yyyy")}
+
+        form_data['user_id'] = self.user_id
+        form_data['trabajo_id'] = self.current_trabajo_id
+        form_data['formulario_id'] = self.current_formulario_id
+
+        print("Datos del formulario que se enviarán:", json.dumps(form_data, indent=4))
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = requests.post('https://loverman.net/dbase/dga2024/api/api.php?action=saveForm', json=form_data)
+                response.raise_for_status()
+                if not silence:
+                    self.show_message("Info", "Guardar", "Formulario guardado exitosamente.")
+                    print("Formulario guardado:", form_data)
+                break
+            except requests.RequestException as e:
+                if attempt == max_retries - 1:
+                    if not silence:
+                        self.show_message("Error", "Error al guardar formulario", str(e))
+                        print(f"Error al guardar formulario: {e}")
+                else:
+                    print(f"Reintentando... intento {attempt + 1} de {max_retries}")
+
+
+    def load_form(self, trabajo_id):
+        self.clear_form()
+        try:
+            response = requests.get(f'{API_BASE_URL}getForm&trabajo_id={trabajo_id}')
+            response.raise_for_status()
+            form_data = response.json()
+            for label_text, data in form_data.items():
+                entry_type = data["type"]
+                entry_value = data["value"]
+                if not any(label == label_text for label, _ in self.entries):
+                    if entry_type == "QLineEdit":
+                        self.add_input_field(label_text, "text")
+                    elif entry_type == "QComboBox":
+                        self.add_input_field(label_text, "select", [])
+                    elif entry_type == "QCheckBox":
+                        self.add_input_field(label_text, "checkbox")
+                    elif entry_type == "QTextEdit":
+                        self.add_input_field(label_text, "textarea")
+                    elif entry_type == "QDateEdit":
+                        self.add_input_field(label_text, "date")
+                for label, entry in self.entries:
+                    if label == label_text:
+                        if entry_type == "QLineEdit":
+                            entry.setText(entry_value)
+                        elif entry_type == "QComboBox":
+                            index = entry.findText(entry_value)
+                            if index >= 0:
+                                entry.setCurrentIndex(index)
+                        elif entry_type == "QCheckBox":
+                            entry.setChecked(entry_value)
+                        elif entry_type == "QTextEdit":
+                            entry.setPlainText(entry_value)
+                        elif entry_type == "QDateEdit":
+                            entry.setDate(QDate.fromString(entry_value, "dd/MM/yyyy"))
+            print("Formulario cargado:", form_data)
+            
+        except requests.RequestException as e:
+            print(f"Fallo cargar: {e}")
+            self.show_message("Error", "Error al cargar formulario", str(e))
+            
+    def clear_form(self):
+        for _, entry in self.entries:
+            if isinstance(entry, QLineEdit):
+                entry.clear()
+            elif isinstance(entry, QComboBox):
+                entry.setCurrentIndex(-1)
+            elif isinstance(entry, QDateEdit):
+                entry.setDate(QDate.fromString("01/01/1985", "dd/MM/yyyy"))
+            elif isinstance(entry, QTextEdit):
+                entry.clear()
+            elif isinstance(entry, QCheckBox):
+                entry.setChecked(False)
+        print("Formulario limpiado")
+
+    def submit_form(self):
+        self.save_form()
+        self.update_trabajo_estado("Terminado")
+        self.load_trabajos()
+        self.clear_pdf_viewer()
+        self.clear_pdf_list()
+
+    def clear_pdf_list(self):
+        self.pdf_listbox.clear()
+        self.pdf_paths = []
+
+    def clear_pdf_viewer(self):
+        self.browser.setUrl(QUrl())
+        self.text_edit.clear()
+    
+    def update_trabajo_estado(self, estado):
+        try:
+            response = requests.post(f'{API_BASE_URL}updateTrabajoEstado', json={
+                'trabajo_id': self.current_trabajo_id,
+                'estado': estado
+            })
+            response.raise_for_status()
+            response_data = response.json()
+            if 'terminados_count' in response_data:
+                terminados_count = response_data['terminados_count']
+                self.set_title(terminados_count)
+            self.show_message("Info", "Estado Actualizado", "El estado del trabajo se ha actualizado a Terminado.")
+        except requests.RequestException as e:
+            self.show_message("Error", "Error al actualizar estado", str(e))
+            print(f"Error al actualizar estado: {e}")
+
+
+    def show_message(self, message_type, title, message):
+        msg_box = QMessageBox()
+        if message_type == "Error":
+            msg_box.setIcon(QMessageBox.Critical)
+        elif message_type == "Info":
+            msg_box.setIcon(QMessageBox.Information)
+        elif message_type == "Warning":
+            msg_box.setIcon(QMessageBox.Warning)
+        else:
+            msg_box.setIcon(QMessageBox.NoIcon)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.exec_()
+
+    def open_inscription_modal(self):
+        if not self.current_trabajo_id or not self.current_formulario_id:
+            self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de continuar.")
+            return
+        if self.modal_abierto:
+            self.show_message("Error", "Acción no permitida", "Ya hay un modal abierto.")
+            return
+        self.modal_abierto = True
+        self.inscription_modal = InscriptionModal(self)
+        self.inscription_modal.show()
+        self.inscription_modal.finished.connect(self.on_modal_closed)
+
+        
+    def open_usuarios_modal(self):
+        if not self.current_trabajo_id or not self.current_formulario_id:
+            self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de continuar.")
+            return
+        if self.modal_abierto:
+            self.show_message("Error", "Acción no permitida", "Ya hay un modal abierto.")
+            return
+        
+        self.modal_abierto = True
+        self.usuario_modal = UsuarioModal(self)
+        self.usuario_modal.show() 
+        self.usuario_modal.finished.connect(self.on_modal_closed)
+
+    def open_detalles_modal(self):
+        if not self.current_trabajo_id or not self.current_formulario_id:
+            self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de continuar.")
+            return
+        if self.modal_abierto:
+            self.show_message("Error", "Acción no permitida", "Ya hay un modal abierto.")
+            return
+        
+        self.modal_abierto = True
+        self.details_modal = DetallesModal(self)
+        self.details_modal.show()
+        self.details_modal.finished.connect(self.on_modal_closed)
+
+    def on_modal_closed(self):
+        self.modal_abierto = False 
