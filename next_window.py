@@ -201,6 +201,8 @@ class NextWindow(QMainWindow):
         if selected_items:
             self.update_trabajo_estado("Asignado")
             self.load_trabajos()
+            self.current_trabajo_id = None
+            self.devolver_button.setEnabled(False)
         
     def cambiar_seleccion(self, item, lista):
         current_item = lista.currentItem()
@@ -825,6 +827,8 @@ class NextWindow(QMainWindow):
                     self.load_trabajos()
                     self.clear_pdf_viewer()
                     self.clear_pdf_list()
+                    self.current_trabajo_id = None
+                    self.skip_inscription_button.setEnabled(False)
 
                 break
             except requests.RequestException as e:
@@ -932,6 +936,8 @@ class NextWindow(QMainWindow):
                 self.session_history.insert(0, history_record)
                 
                 self.show_message("Info", "Estado Actualizado", f"El estado del trabajo se ha actualizado a {estado}.")
+                self.scroll_area.verticalScrollBar().setValue(0)
+
         except requests.RequestException as e:
             self.show_message("Error", "Error al actualizar estado", str(e))
             print(f"Error al actualizar estado: {e}")
