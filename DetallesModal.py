@@ -197,12 +197,6 @@ class DetallesModal(QDialog):
             return
 
         try:
-            
-            print({
-                'trabajo_id': self.parent().current_trabajo_id,
-                'formulario_id': self.parent().current_formulario_id,
-                'detalles': detalles_data
-            })
             response = requests.post(f'{self.parent().api_base_url}saveDetalles', json={
                 'trabajo_id': self.parent().current_trabajo_id,
                 'formulario_id': self.parent().current_formulario_id,
@@ -228,7 +222,6 @@ class DetallesModal(QDialog):
             response = requests.get(f'{self.parent().api_base_url}getDetalles&formulario_id={self.parent().current_formulario_id}')
             response.raise_for_status()
             detalles_data = response.json()
-            print("DETALLES----------------------___________>\n", detalles_data)
             if isinstance(detalles_data, list):
                 for detalle in detalles_data:
                     self.add_detalle(detalle)
