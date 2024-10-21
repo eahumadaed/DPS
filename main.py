@@ -32,7 +32,7 @@ class UserSelectionWindow(QWidget):
         self.layout.addWidget(self.label)
         
         self.user_select = QComboBox(self)
-        
+        self.user_select.wheelEvent = lambda event: event.ignore()
         self.layout.addWidget(self.user_select)
         
         self.continue_button = QPushButton("Continuar", self)
@@ -48,7 +48,7 @@ class UserSelectionWindow(QWidget):
             response.raise_for_status()
             users = response.json()
             for user in users:
-                user_info = f"{user['name']} ({user['asignados']} Asignados| {user['terminados']} Terminados)"
+                user_info = f"{user['name']} ({int(user['asignados'])} Asignados| {user['terminados']} Terminados)"
                 self.user_select.addItem(user_info, {
                     'id': user['id'],
                     'name': user['name'],

@@ -1,17 +1,19 @@
 from comunas import Comunas_list
 import requests,json
-from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QFrame, QHBoxLayout, QListWidget, QPushButton, QLabel, QScrollArea, QSpacerItem, QSizePolicy, QTextEdit, QDateEdit, QGridLayout, QSplitter, QComboBox, QLineEdit, QCheckBox, QMessageBox, QListWidgetItem,QInputDialog
+from PyQt5.QtWidgets import QMessageBox, QCompleter, QApplication, QMainWindow, QVBoxLayout, QWidget, QFrame, QHBoxLayout, QListWidget, QPushButton, QLabel, QScrollArea, QSpacerItem, QSizePolicy, QTextEdit, QDateEdit, QGridLayout, QComboBox, QLineEdit, QCheckBox, QListWidgetItem
 from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtCore import QUrl, Qt, QDate, QEvent
-from PyQt5.QtGui import QIntValidator
+from PyQt5.QtCore import QUrl, Qt, QDate, QEvent, QStringListModel
+from PyQt5.QtGui import QIntValidator, QColor
 from UsuarioModal import UsuarioModal
 from InscriptionModal import InscriptionModal
-from FindDialog import FindDialog
 from DetallesModal import DetallesModal
-from PyQt5.QtGui import QValidator, QRegExpValidator
+from HistoryModal import HistoryModal
+from PyQt5.QtGui import QRegExpValidator
 from PyQt5.QtCore import QRegExp
-
-
+import sys
+from comunas import Comunas_list
+import re
+from datetime import datetime
 API_BASE_URL = 'https://loverman.net/dbase/dga2024/api/api.php?action='
 api_base_url = API_BASE_URL
 
@@ -19,11 +21,13 @@ class NextWindow(QMainWindow):
     def __init__(self, user_id, user_name,Cantidad):
         super().__init__()
         self.user_id = user_id
-        self.current_trabajo_id = None 
+        self.current_trabajo_id = None
+        self.current_trabajo_info = None
         self.current_formulario_id = None
         self.modal_abierto = False
         self.user_name = user_name
-
+        self.session_history = []
+    
         self.API_BASE_URL = 'https://loverman.net/dbase/dga2024/api/api.php?action='
         self.api_base_url = self.API_BASE_URL
 
@@ -35,13 +39,101 @@ class NextWindow(QMainWindow):
         self.entries = []
         self.form_widget = QWidget()
         self.form_layout = QVBoxLayout(self.form_widget)
+        
+        self.devolver_button = QPushButton("Devolver a asignados", self)
+        
         self.create_left_frame()
         self.create_middle_frame()
         self.create_right_frame()
         self.set_title(Cantidad)
+
+        self.load_trabajos()
         
     def set_title(self,Cantidad):
-        self.setWindowTitle(f"DPs Formulario ({self.user_name}) Terminados: {Cantidad}")
+        self.setWindowTitle(f"DPs Formulario ({self.user_name}) - {Cantidad} Terminados")
+    
+    def show_message(self, message_type, title, message):
+        msg_box = QMessageBox()
+        if message_type == "Error":
+            msg_box.setIcon(QMessageBox.Critical)
+        elif message_type == "Info":
+            msg_box.setIcon(QMessageBox.Information)
+        elif message_type == "Warning":
+            msg_box.setIcon(QMessageBox.Warning)
+        else:
+            msg_box.setIcon(QMessageBox.NoIcon)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.exec_()
+        
+    def calculate_dv(self, rut):
+        reversed_digits = map(int, reversed(rut))
+        factors = [2, 3, 4, 5, 6, 7] 
+        s = sum(d * f for d, f in zip(reversed_digits, factors * 3))
+        dv = 11 - (s % 11)
+        if dv == 11:
+            return '0'
+        elif dv == 10:
+            return 'K'
+        else:
+            return str(dv)
+        
+    def show_rut_error(self, rut,error):
+        self.show_message("Info", "Rut inválido", f'Rut "{rut}" con formato incorrecto, por favor corregir. (xxxxxxxx-x)\n\nError: {error}')
+        
+    def verificar_rut(self, rut, show_messages = True):
+        rut = rut.replace(" ","").upper()
+        errorWasFounded = False
+        try:
+            rut = rut.replace(" ","").upper()
+            if "-" not in rut:
+                errorWasFounded = True
+                if show_messages:
+                    self.show_rut_error(rut, "Falta '-'")
+            elif not rut.replace("-","")[:-1].isdigit() and (rut.replace("-","")[-1].isdigit() or rut.replace("-","")[-1] == 'K'):
+                errorWasFounded = True
+                if show_messages:
+                    self.show_rut_error(rut, "Hay caracteres no permitidos")
+            else:
+                base = rut.split("-")[0]
+                dv = rut.split("-")[-1]
+            
+                if 6 > len(base) > 8:
+                    errorWasFounded = True
+                    if show_messages:
+                        self.show_rut_error(rut, "Comprobación de longitud")
+                
+                else:
+                    calculated_dv = self.calculate_dv(base)
+                    if dv!=calculated_dv:
+                        errorWasFounded = True
+                        if show_messages:
+                            self.show_rut_error(rut, "Dígito verificador incorrecto")
+            
+            return {"rut":rut, "errorWasFounded": errorWasFounded}
+
+
+        except (ValueError, IndexError) as e:
+            print(f"Error al verificar rut")
+            return {"rut":rut, "errorWasFounded": False}
+        
+    def get_datetime(self):
+        return datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        
+    def to_uppercase(self, entry):
+        entry.blockSignals(True)
+        
+        if isinstance(entry, QLineEdit):
+            cursor_position = entry.cursorPosition() 
+            entry.setText(entry.text().upper())  
+            entry.setCursorPosition(cursor_position)
+        elif isinstance(entry, QTextEdit):
+            cursor_position = entry.textCursor().position()
+            entry.setPlainText(entry.toPlainText().upper())
+            cursor = entry.textCursor()
+            cursor.setPosition(cursor_position)
+            entry.setTextCursor(cursor)
+        entry.blockSignals(False)
 
         
     def buscar_rut_api(self, rut):
@@ -62,13 +154,33 @@ class NextWindow(QMainWindow):
 
         self.left_layout = QVBoxLayout(self.left_frame)
 
+        self.history_layout = QHBoxLayout()
+        
         self.dir_label = QLabel("Seleccione trabajo", self)
-        self.left_layout.addWidget(self.dir_label)
+        self.history_layout.addWidget(self.dir_label)
+
+        self.history_button = QPushButton("📋")
+        self.history_button.setFixedWidth(30)
+        self.history_button.clicked.connect(lambda: self.open_history_modal(history_list = self.session_history))
+        self.history_layout.addWidget(self.history_button)
+        
+        self.left_layout.addLayout(self.history_layout)
 
         self.dir_listwidget = QListWidget(self)
-        self.dir_listwidget.setMaximumHeight(300)
+        self.dir_listwidget.setMaximumHeight(180)
         self.dir_listwidget.itemSelectionChanged.connect(self.on_directory_select)
         self.left_layout.addWidget(self.dir_listwidget)
+        
+        self.dir_label = QLabel("Trabajos pendientes", self)
+        self.left_layout.addWidget(self.dir_label)
+        
+        self.dir_pendientes_list = QListWidget(self)
+        self.dir_pendientes_list.setMaximumHeight(180)
+        self.dir_pendientes_list.itemSelectionChanged.connect(self.on_directory_select)
+        self.left_layout.addWidget(self.dir_pendientes_list)
+        
+        self.devolver_button.clicked.connect(self.devolver_a_asignados)
+        self.left_layout.addWidget(self.devolver_button)
 
         self.dir_label = QLabel("Seleccione PDF", self)
         self.left_layout.addWidget(self.dir_label)
@@ -76,18 +188,44 @@ class NextWindow(QMainWindow):
         self.pdf_listbox.itemSelectionChanged.connect(self.on_pdf_select)
         self.left_layout.addWidget(self.pdf_listbox)
         
-        self.load_trabajos()
+        self.dir_listwidget.itemClicked.connect(lambda item: self.cambiar_seleccion(item, self.dir_listwidget))
+        self.dir_pendientes_list.itemClicked.connect(lambda item: self.cambiar_seleccion(item, self.dir_pendientes_list))
+        self.pdf_listbox.itemClicked.connect(lambda item: self.cambiar_seleccion(item, self.pdf_listbox))
+        
+    def devolver_a_asignados(self):
+        if not self.current_trabajo_id or not self.current_formulario_id:
+            self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de guardar.")
+            return
+        selected_items = self.dir_pendientes_list.selectedItems()
+        
+        if selected_items:
+            self.update_trabajo_estado("Asignado")
+            self.load_trabajos()
+        
+    def cambiar_seleccion(self, item, lista):
+        current_item = lista.currentItem()
+        selected_row = lista.row(item)
+        
+        if selected_row != current_item:
+            lista.setCurrentRow(selected_row)
 
     def load_trabajos(self):
         try:
             self.dir_listwidget.clear()
+            self.dir_pendientes_list.clear()
             response = requests.get(f'{API_BASE_URL}getTrabajos&user_id={self.user_id}')
             response.raise_for_status()
             trabajos = response.json()
             for trabajo in trabajos:
                 item = QListWidgetItem(f"{trabajo['numero']} - {trabajo['anio']} ({trabajo['estado']})")
                 item.setData(Qt.UserRole, trabajo['id'])
-                self.dir_listwidget.addItem(item)
+                if trabajo['estado']=="Pendiente":
+                    self.dir_pendientes_list.addItem(item)
+                elif trabajo['estado']=="Terminado":
+                    item.setForeground(QColor('green'))
+                    self.dir_listwidget.addItem(item)
+                else:
+                    self.dir_listwidget.addItem(item)
         except requests.RequestException as e:
             self.show_message("Error", "Error al cargar trabajos", str(e))
 
@@ -147,16 +285,12 @@ class NextWindow(QMainWindow):
             'user_paterno': 'PARTERNO',
             'user_materno': 'MATERNO'
         }
+        
         for json_key, form_label in field_mapping.items():
             if json_key in formulario:
-                entry_value = formulario[json_key]
-                
+                entry_value = formulario[json_key]     
                 if json_key == 'user_rut' and entry_value:
-                    if "-" not in entry_value:
-                        clean_rut = entry_value.replace(".", "").replace("-", "")
-                        
-                        if 7 <= len(clean_rut) <= 9:
-                            entry_value = self.calcular_dv(clean_rut)
+                    entry_value = self.verificar_rut(entry_value)['rut']
 
                 for label, entry in self.entries:
                     if label == form_label:
@@ -173,11 +307,25 @@ class NextWindow(QMainWindow):
                         elif isinstance(entry, QDateEdit) and entry_value:
                             entry.setDate(QDate.fromString(entry_value, "dd/MM/yyyy"))
 
+        
         print("Formulario cargado:", formulario)
 
 
     def on_directory_select(self):
-        selected_items = self.dir_listwidget.selectedItems()
+        selected_items = []
+        
+        if self.sender() == self.dir_listwidget:
+            self.dir_pendientes_list.clearSelection()
+            selected_items = self.dir_listwidget.selectedItems()
+            self.devolver_button.setEnabled(False)
+            self.skip_inscription_button.setEnabled(True)
+            
+        elif self.sender() == self.dir_pendientes_list:
+            self.dir_listwidget.clearSelection()
+            selected_items = self.dir_pendientes_list.selectedItems()
+            self.devolver_button.setEnabled(True)
+            self.skip_inscription_button.setEnabled(False)
+        
         if selected_items:
             selected_item = selected_items[0]
             selected_trabajo_id = selected_item.data(Qt.UserRole)
@@ -186,8 +334,22 @@ class NextWindow(QMainWindow):
                 self.save_form(True)
 
             self.current_trabajo_id = selected_trabajo_id
+            
+            item_info = selected_item.text()
+
+            self.current_trabajo_info = {
+                "numero_trabajo":item_info.split("-")[0].strip(),
+                "anio_trabajo": item_info.split("-")[-1].split("(")[0].strip(),
+                "estado_anterior": item_info.split("(")[-1].replace(")","").strip()
+            }
+            
+            if self.current_trabajo_info['estado_anterior']=="Terminado":
+                self.skip_inscription_button.setEnabled(False)
+                
+            
             print(f"Trabajo seleccionado: {selected_trabajo_id}")
             self.load_formulario(selected_trabajo_id)
+            self.clear_pdf_list()
             self.clear_pdf_viewer()
             self.load_pdfs(selected_trabajo_id)
             
@@ -219,7 +381,7 @@ class NextWindow(QMainWindow):
             pdf_url = f"https://loverman.net/dbase/dga2024/viewer.html?file={encoded_pdf_path}#page=1"
             self.browser.load(QUrl(pdf_url))
             print(f"Mostrando PDF desde URL: {pdf_url}")
-            self.load_text_file(encoded_pdf_path)
+            #self.load_text_file(encoded_pdf_path)
         except Exception as e:
             self.show_message("Error", "Error al cargar PDF", str(e))
 
@@ -254,20 +416,37 @@ class NextWindow(QMainWindow):
         self.middle_layout = QVBoxLayout(self.middle_frame)
         self.middle_layout.setSpacing(5)
 
+        self.middle_section_title_layout = QHBoxLayout()
         self.form_label = QLabel("Formulario", self)
-        self.middle_layout.addWidget(self.form_label)
-
+        self.middle_section_title_layout.addWidget(self.form_label)
+        
+        self.skip_inscription_button = QPushButton("Saltar Inscripción ⏩", self)
+        self.skip_inscription_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.skip_inscription_button.clicked.connect(lambda: self.save_form(True))
+        self.middle_section_title_layout.addWidget(self.skip_inscription_button)
+        
+        self.middle_layout.addLayout(self.middle_section_title_layout)
+        
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
         self.middle_layout.addWidget(self.scroll_area)
         self.form_widget = QWidget()
         self.scroll_area.setWidget(self.form_widget)
         self.form_layout = QVBoxLayout(self.form_widget)
-
+    
         # APARTADO: INSCRIPCIONES
         self.add_section_title("INSCRIPCIONES")
         self.inscriptions_layout = QGridLayout()
         self.form_layout.addLayout(self.inscriptions_layout)
+        
+        self.comunas_formatted_list = [
+            comuna.upper().replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
+            for comuna in Comunas_list
+        ]
+        
+        self.completer = QCompleter(self.comunas_formatted_list)
+        self.completer.setCompletionMode(QCompleter.InlineCompletion)
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
 
         self.add_input_field("F_INSCRIPCION", "date", parent_layout=self.inscriptions_layout, row=0, col=0)
         self.add_input_field("COMUNA", "select", Comunas_list, parent_layout=self.inscriptions_layout, row=1, col=0)  # Agrega las comunas correspondientes
@@ -353,6 +532,17 @@ class NextWindow(QMainWindow):
         self.submit_button.clicked.connect(self.submit_form)
         self.middle_layout.addWidget(self.submit_button)
         
+    def update_completer(self, preferredValue):
+        updated_list = [preferredValue] + [comuna for comuna in self.comunas_formatted_list if comuna != preferredValue]
+
+        model = QStringListModel(updated_list)
+        self.completer.setModel(model)
+            
+    def set_preferred_value(self, value):
+        # Establecer el valor preferido en la instancia
+        self.preferredValue = value.upper().replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
+        self.update_completer(self.preferredValue)
+        
     def handle_rut_search(self):
         rut_entry = None
         for label, entry in self.entries:
@@ -396,7 +586,11 @@ class NextWindow(QMainWindow):
         self.layout.addWidget(self.right_frame, stretch=1)
 
         self.right_layout = QVBoxLayout(self.right_frame)
-
+    
+        self.browser = QWebEngineView()
+        self.right_layout.addWidget(self.browser)
+        
+        """
         self.top_frame = QFrame(self)
         self.right_layout.addWidget(self.top_frame)
 
@@ -416,6 +610,7 @@ class NextWindow(QMainWindow):
         self.find_dialog = FindDialog(self)
         self.text_edit.setFocus()
         self.text_edit.installEventFilter(self)
+        """
     
     def eventFilter(self, source, event):
         if event.type() == QEvent.KeyPress:
@@ -447,6 +642,11 @@ class NextWindow(QMainWindow):
             if label_text == "RUT":
                 entry.focusOutEvent = lambda event: self.on_rut_focus_out(entry, event)
                 
+            if label_text == "CBR":
+                entry.setCompleter(self.completer)
+                entry.returnPressed.connect(self.select_completion)
+                
+            entry.textChanged.connect(lambda: self.to_uppercase(entry))
         elif field_type == "number":
             entry = QLineEdit()
             entry.setValidator(QIntValidator())
@@ -454,6 +654,11 @@ class NextWindow(QMainWindow):
                 entry.setFixedWidth(size)
         elif field_type == "select":
             entry = QComboBox()
+            entry.wheelEvent = lambda event: event.ignore()
+            if label_text == "COMUNA":
+                entry.currentIndexChanged.connect(
+                    lambda index: self.set_preferred_value(entry.currentText())
+                )
             if options:
                 entry.addItems(options)
         elif field_type == "date":
@@ -467,7 +672,12 @@ class NextWindow(QMainWindow):
             entry = QCheckBox()
         elif field_type == "textarea":
             entry = QTextEdit()
-            entry.setFixedHeight(100)
+            entry.setMinimumHeight(100)  # Altura mínima
+            entry.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)  # Crecer verticalmente
+
+            # Conectar la señal de cambio de texto
+            entry.textChanged.connect(lambda: self.adjust_height(entry))
+            entry.textChanged.connect(lambda: self.to_uppercase(entry))
         else:
             raise ValueError(f"Tipo de campo desconocido: {field_type}")
 
@@ -479,6 +689,16 @@ class NextWindow(QMainWindow):
         else:
             parent_layout.addWidget(container)
         print(f"Campo agregado: {label_text}, tipo: {field_type}")
+        
+    def select_completion(self):
+        if self.completer.completionCount() > 0:
+            self.sender().setText(self.completer.currentCompletion())
+        self.sender().focusNextPrevChild(True)
+        
+    def adjust_height(self,entry):
+        # Ajustar la altura del QTextEdit según el contenido
+        height = int(entry.document().size().height()) + 5  # +20 para un espaciado adicional
+        entry.setFixedHeight(max(height, 100))
     
     def auto_format_date(self, text):
         clean_text = text.replace("/", "")
@@ -517,69 +737,23 @@ class NextWindow(QMainWindow):
 
     def on_rut_focus_out(self, entry, event):
         try:
-            if "-" in entry.text():
-                QLineEdit.focusOutEvent(entry, event)
-                return
+            formatted_rut=""
+            text = entry.text()
+            base_rut = re.sub(r'\D', '', text.strip().split("-")[0])
 
-            clean_text = entry.text().replace(".", "").replace("-", "")
-
-            if 7 <= len(clean_text) <= 9:
-                formatted_rut = self.calcular_dv(clean_text)
-
+            if len(base_rut) > 8:
+                base_rut = base_rut[:8] 
+            
+            if len(base_rut)>=6:
+                dv = self.calculate_dv(base_rut)
+                formatted_rut = f"{base_rut}-{dv}"
+            #formatted_rut = text
             entry.blockSignals(True)
             entry.setText(formatted_rut)
-            entry.blockSignals(False) 
+            entry.blockSignals(False)
         except:
             pass
         QLineEdit.focusOutEvent(entry, event)
-
-
-    def formatear_rut_en_vivo(self, text):
-        clean_text = text.replace(".", "").replace("-", "")
-        
-        if len(clean_text) > 8:
-            clean_text = clean_text[:8] + "-" + clean_text[8:]
-        
-        formatted_rut = ""
-        if len(clean_text) >= 4:
-            formatted_rut += clean_text[:-3].replace(r"\B(?=(\d{3})+(?!\d))", ".") + "-" + clean_text[-1]
-        else:
-            formatted_rut += clean_text
-        
-        return formatted_rut
-    
-
-    def calcular_dv(self, rut):
-        try:
-            clean_rut = rut.replace(".", "").replace("-", "").replace(" ", "")
-            if clean_rut[-1].lower() == 'k':
-                return clean_rut[:-1] + "-K"
-            
-            base_rut = clean_rut[:-1]
-            last_digit = clean_rut[-1].upper()
-
-            calculated_dv = self._calculate_verifier_digit(base_rut)
-            if last_digit == calculated_dv:
-                return base_rut + "-" + last_digit
-            else:
-                calculated_dv_full = self._calculate_verifier_digit(clean_rut)
-                return clean_rut + "-" + calculated_dv_full
-
-        except (ValueError, IndexError) as e:
-            print(f"Error al calcular el dígito verificador: {e}")
-            return rut
-        
-    def _calculate_verifier_digit(self, rut):
-        reversed_digits = map(int, reversed(rut))
-        factors = [2, 3, 4, 5, 6, 7] 
-        s = sum(d * f for d, f in zip(reversed_digits, factors * 3))
-        dv = 11 - (s % 11)
-        if dv == 11:
-            return '0'
-        elif dv == 10:
-            return 'K'
-        else:
-            return str(dv)
 
     def add_section_title(self, title):
         title_label = QLabel(title)
@@ -615,6 +789,9 @@ class NextWindow(QMainWindow):
         self.show_message("Info", "Buscar RUT", f"Buscando información para RUT: {rut}")
 
     def save_form(self,silence=False):
+        if not self.current_trabajo_id or not self.current_formulario_id:
+            self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de guardar.")
+            return
         form_data = {}
         for label_text, entry in self.entries:
             if isinstance(entry, QLineEdit):
@@ -642,6 +819,13 @@ class NextWindow(QMainWindow):
                 if not silence:
                     self.show_message("Info", "Guardar", "Formulario guardado exitosamente.")
                     print("Formulario guardado:", form_data)
+                    
+                if self.sender() == self.skip_inscription_button:
+                    self.update_trabajo_estado("Pendiente")
+                    self.load_trabajos()
+                    self.clear_pdf_viewer()
+                    self.clear_pdf_list()
+
                 break
             except requests.RequestException as e:
                 if attempt == max_retries - 1:
@@ -707,6 +891,9 @@ class NextWindow(QMainWindow):
         print("Formulario limpiado")
 
     def submit_form(self):
+        if not self.current_trabajo_id or not self.current_formulario_id:
+            self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de guardar.")
+            return
         self.save_form()
         self.update_trabajo_estado("Terminado")
         self.load_trabajos()
@@ -719,38 +906,35 @@ class NextWindow(QMainWindow):
 
     def clear_pdf_viewer(self):
         self.browser.setUrl(QUrl())
-        self.text_edit.clear()
+        #self.text_edit.clear()
     
     def update_trabajo_estado(self, estado):
         try:
-            response = requests.post(f'{API_BASE_URL}updateTrabajoEstado', json={
-                'trabajo_id': self.current_trabajo_id,
-                'estado': estado
-            })
-            response.raise_for_status()
-            response_data = response.json()
-            if 'terminados_count' in response_data:
-                terminados_count = response_data['terminados_count']
-                self.set_title(terminados_count)
-            self.show_message("Info", "Estado Actualizado", "El estado del trabajo se ha actualizado a Terminado.")
+            if self.current_trabajo_info['estado_anterior'] != "Terminado":
+                response = requests.post(f'{API_BASE_URL}updateTrabajoEstado', json={
+                    'trabajo_id': self.current_trabajo_id,
+                    'estado': estado
+                })
+                response.raise_for_status()
+                response_data = response.json()
+                if 'terminados_count' in response_data:
+                    terminados_count = response_data['terminados_count']
+                    self.set_title(terminados_count)
+
+                history_record = data = {
+                    "numero_trabajo":self.current_trabajo_info['numero_trabajo'],
+                    "anio_trabajo": self.current_trabajo_info['anio_trabajo'],
+                    "estado_anterior": self.current_trabajo_info['estado_anterior'],
+                    "estado_nuevo": estado,
+                    "datetime": self.get_datetime()
+                }
+                
+                self.session_history.insert(0, history_record)
+                
+                self.show_message("Info", "Estado Actualizado", f"El estado del trabajo se ha actualizado a {estado}.")
         except requests.RequestException as e:
             self.show_message("Error", "Error al actualizar estado", str(e))
             print(f"Error al actualizar estado: {e}")
-
-
-    def show_message(self, message_type, title, message):
-        msg_box = QMessageBox()
-        if message_type == "Error":
-            msg_box.setIcon(QMessageBox.Critical)
-        elif message_type == "Info":
-            msg_box.setIcon(QMessageBox.Information)
-        elif message_type == "Warning":
-            msg_box.setIcon(QMessageBox.Warning)
-        else:
-            msg_box.setIcon(QMessageBox.NoIcon)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(message)
-        msg_box.exec_()
 
     def open_inscription_modal(self):
         if not self.current_trabajo_id or not self.current_formulario_id:
@@ -777,6 +961,22 @@ class NextWindow(QMainWindow):
         self.usuario_modal = UsuarioModal(self)
         self.usuario_modal.show() 
         self.usuario_modal.finished.connect(self.on_modal_closed)
+        
+        if self.usuario_modal.loaded_ruts_with_error:
+            message = "Los siguientes ruts son inválidos:\n"
+            for rut in self.usuario_modal.loaded_ruts_with_error:
+                message += f"\n'{rut}'"
+            self.show_message("Info", "Ruts inválidos", message)
+        
+    def open_history_modal(self, history_list):
+        if self.modal_abierto:
+            self.show_message("Error", "Acción no permitida", "Ya hay un modal abierto.")
+            return
+        self.modal_abierto = True
+        self.history_modal = HistoryModal(self, history_list=history_list)
+        self.history_modal.show()
+        self.history_modal.finished.connect(self.on_modal_closed)
+        
 
     def open_detalles_modal(self):
         if not self.current_trabajo_id or not self.current_formulario_id:
@@ -793,3 +993,11 @@ class NextWindow(QMainWindow):
 
     def on_modal_closed(self):
         self.modal_abierto = False 
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    next_window = NextWindow(1, "Edinson", 0)
+    next_window.showMaximized()
+    next_window.show()
+    sys.exit(app.exec_())
+        

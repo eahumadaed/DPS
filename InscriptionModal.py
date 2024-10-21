@@ -1,5 +1,6 @@
-from PyQt5.QtWidgets import QVBoxLayout, QFrame, QListWidget, QPushButton, QLabel, QLineEdit, QGridLayout, QComboBox, QCheckBox, QDialog, QListWidgetItem
+from PyQt5.QtWidgets import QVBoxLayout, QCompleter, QFrame, QListWidget, QPushButton, QLabel, QLineEdit, QGridLayout, QComboBox, QCheckBox, QDialog, QListWidgetItem
 from PyQt5.QtGui import QIntValidator
+from PyQt5.QtCore import Qt, QStringListModel
 import requests
 from comunas import Comunas_list
 
@@ -52,14 +53,30 @@ class InscriptionModal(QDialog):
         comuna_label = QLabel("Comuna:")
         layout.addWidget(comuna_label, 2, 0)
         comuna = QComboBox()
+        comuna.wheelEvent = lambda event: event.ignore()
         comuna.addItems(Comunas_list)
+        comuna.currentIndexChanged.connect(
+                    lambda index: self.set_preferred_value(comuna.currentText())
+                )
         if data:
             comuna.setCurrentText(data['comuna'])
         layout.addWidget(comuna, 2, 1)
 
+        self.comunas_formatted_list = [
+                    comuna.upper().replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
+                    for comuna in Comunas_list
+                ]
+        
+        self.completer = QCompleter(self.comunas_formatted_list)
+        self.completer.setCompletionMode(QCompleter.InlineCompletion)
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+        
         cbr_label = QLabel("CBR:")
         layout.addWidget(cbr_label, 3, 0)
         cbr = QLineEdit()
+        cbr.setCompleter(self.completer)
+        cbr.returnPressed.connect(self.select_completion)
+        cbr.textChanged.connect(lambda: self.parent().to_uppercase(cbr))
         if data:
             cbr.setText(data['cbr'])
         layout.addWidget(cbr, 3, 1)
@@ -103,6 +120,22 @@ class InscriptionModal(QDialog):
         list_item.setSizeHint(container.sizeHint())
         self.inscription_list.addItem(list_item)
         self.inscription_list.setItemWidget(list_item, container)
+        
+    def select_completion(self):
+        if self.completer.completionCount() > 0:
+            self.sender().setText(self.completer.currentCompletion())
+        self.sender().focusNextPrevChild(True)
+        
+    def update_completer(self, preferredValue):
+        updated_list = [preferredValue] + [comuna for comuna in self.comunas_formatted_list if comuna != preferredValue]
+
+        model = QStringListModel(updated_list)
+        self.completer.setModel(model)
+            
+    def set_preferred_value(self, value):
+        # Establecer el valor preferido en la instancia
+        self.preferredValue = value.upper().replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
+        self.update_completer(self.preferredValue)
 
     def auto_format_date(self, text):
         clean_text = text.replace("/", "")

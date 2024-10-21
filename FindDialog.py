@@ -45,5 +45,5 @@ class FindDialog(QDialog):
             cursor.endEditBlock()
 
             if not found:
-                self.parent.show_message("Info", "Buscar", "No se encontró el texto.")
+                self.parent().show_message("Info", "Buscar", "No se encontró el texto.")
 

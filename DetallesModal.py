@@ -1,6 +1,4 @@
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QListWidget, QPushButton, QFrame, QGridLayout, QLabel, QComboBox, QLineEdit, QCheckBox, QListWidgetItem, QTextEdit
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIntValidator
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QListWidget, QPushButton, QFrame, QGridLayout, QLabel, QComboBox, QLineEdit, QListWidgetItem, QTextEdit
 import requests
 
 class DetallesModal(QDialog):
@@ -39,6 +37,7 @@ class DetallesModal(QDialog):
         ejercicio_label = QLabel("Ejercicio del Derecho:")
         layout.addWidget(ejercicio_label, 1, 0)
         ejercicio = QComboBox()
+        ejercicio.wheelEvent = lambda event: event.ignore()
         ejercicio.addItems(['--','PERMANENTE Y CONTINUO', 'EVENTUAL Y CONTINUO','PERM. Y CONT. Y PROVICIONALES','SIN EJERCICIO','PERM. Y DISC. Y PROVICIONALES','PERM Y ALTER. Y PROVICIONALES','EVENTUAL Y DISCONTINUO','EVENTUAL Y ALTERNADO','PERMANENTE Y DISCONTINUO','PERMANENTE Y ALTERNADO'])
         if data:
             ejercicio.setCurrentText(data.get('ejercicio', '--'))
@@ -48,6 +47,7 @@ class DetallesModal(QDialog):
         metodo_label = QLabel("Método de Extracción:")
         layout.addWidget(metodo_label, 2, 0)
         metodo = QComboBox()
+        metodo.wheelEvent = lambda event: event.ignore()
         metodo.addItems(['--','MECANICA','GRAVITACIONAL','MECANICA Y/O GRAVITACIONAL'])
         if data:
             metodo.setCurrentText(data.get('metodo', '--'))
@@ -56,6 +56,7 @@ class DetallesModal(QDialog):
         cantidad_label = QLabel("Cantidad:")
         layout.addWidget(cantidad_label, 3, 0)
         cantidad = QLineEdit()
+        cantidad.textChanged.connect(lambda: self.parent().to_uppercase(cantidad))
         if data:
             cantidad.setText(data.get('cantidad', ''))
         layout.addWidget(cantidad, 3, 1)
@@ -63,6 +64,7 @@ class DetallesModal(QDialog):
         unidad_label = QLabel("Unidad:")
         layout.addWidget(unidad_label, 4, 0)
         unidad = QComboBox()
+        unidad.wheelEvent = lambda event: event.ignore()
         unidad.addItems(['--','LT/S','M3/S','MM3/AÑO','M3/AÑO','LT/MIN','M3/H','LT/H','M3/MES','ACCIONES','M3/DIA','M3/MIN','LT/DIA','REGADORES','CUADRAS','TEJAS','HORAS TURNO','%','PARTES','LT/MES','MMM3/MES','M3/HA/MES', 'ETC'])
         if data:
             unidad.setCurrentText(data.get('unidad', '--'))
@@ -72,6 +74,7 @@ class DetallesModal(QDialog):
         utm_norte_label = QLabel("UTM Norte:")
         layout.addWidget(utm_norte_label, 5, 0)
         utm_norte = QLineEdit()
+        utm_norte.textChanged.connect(lambda: self.parent().to_uppercase(utm_norte))
         if data:
             utm_norte.setText(data.get('utm_norte', ''))
         layout.addWidget(utm_norte, 5, 1)
@@ -80,6 +83,7 @@ class DetallesModal(QDialog):
         utm_este_label = QLabel("UTM Este:")
         layout.addWidget(utm_este_label, 6, 0)
         utm_este = QLineEdit()
+        utm_este.textChanged.connect(lambda: self.parent().to_uppercase(utm_este))
         if data:
             utm_este.setText(data.get('utm_este', ''))
         layout.addWidget(utm_este, 6, 1)
@@ -88,6 +92,7 @@ class DetallesModal(QDialog):
         unidad_utm_label = QLabel("Unidad UTM:")
         layout.addWidget(unidad_utm_label, 7, 0)
         unidad_utm = QComboBox()
+        unidad_utm.wheelEvent = lambda event: event.ignore()
         unidad_utm.addItems(['--','KM', 'MTS'])
         if data:
             unidad_utm.setCurrentText(data.get('unidad_utm', '--'))
@@ -97,6 +102,7 @@ class DetallesModal(QDialog):
         huso_label = QLabel("Huso:")
         layout.addWidget(huso_label, 8, 0)
         huso = QComboBox()
+        huso.wheelEvent = lambda event: event.ignore()
         huso.addItems(['--','18', '19'])
         if data:
             huso.setCurrentText(data.get('huso', '--'))
@@ -106,6 +112,7 @@ class DetallesModal(QDialog):
         datum_label = QLabel("Datum:")
         layout.addWidget(datum_label, 9, 0)
         datum = QComboBox()
+        datum.wheelEvent = lambda event: event.ignore()
         datum.addItems(['--','56', '69','84'])
         if data:
             datum.setCurrentText(data.get('datum', '--'))
@@ -115,14 +122,17 @@ class DetallesModal(QDialog):
         referencia_label = QLabel("Puntos Conocidos de Captación:")
         layout.addWidget(referencia_label, 10, 0)
         referencia = QTextEdit()
-        referencia.setFixedHeight(50)
+        
+        referencia.setFixedHeight(100)
         if data:
             referencia.setPlainText(data.get('referencia', ''))
-        layout.addWidget(referencia, 10, 1)
+        
+        referencia.textChanged.connect(lambda: self.parent().to_uppercase(referencia))
+        layout.addWidget(referencia, 10, 1,6,1)
 
         delete_button = QPushButton("Borrar", self)
         delete_button.clicked.connect(lambda: self.delete_detalle(container, data.get('id') if data else None))
-        layout.addWidget(delete_button, 11, 0, 1, 2)
+        layout.addWidget(delete_button, 16, 0, 1, 2)
 
         list_item = QListWidgetItem()
         list_item.setSizeHint(container.sizeHint())
@@ -187,6 +197,12 @@ class DetallesModal(QDialog):
             return
 
         try:
+            
+            print({
+                'trabajo_id': self.parent().current_trabajo_id,
+                'formulario_id': self.parent().current_formulario_id,
+                'detalles': detalles_data
+            })
             response = requests.post(f'{self.parent().api_base_url}saveDetalles', json={
                 'trabajo_id': self.parent().current_trabajo_id,
                 'formulario_id': self.parent().current_formulario_id,
@@ -212,6 +228,7 @@ class DetallesModal(QDialog):
             response = requests.get(f'{self.parent().api_base_url}getDetalles&formulario_id={self.parent().current_formulario_id}')
             response.raise_for_status()
             detalles_data = response.json()
+            print("DETALLES----------------------___________>\n", detalles_data)
             if isinstance(detalles_data, list):
                 for detalle in detalles_data:
                     self.add_detalle(detalle)
