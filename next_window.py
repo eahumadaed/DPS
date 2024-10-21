@@ -196,7 +196,7 @@ class NextWindow(QMainWindow):
         
     def devolver_a_asignados(self):
         if not self.current_trabajo_id or not self.current_formulario_id:
-            self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de guardar.")
+            self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de presionar el botóm.")
             return
         selected_items = self.dir_pendientes_list.selectedItems()
         
@@ -538,7 +538,7 @@ class NextWindow(QMainWindow):
     
     def skip_inscription(self):
         if not self.current_trabajo_id or not self.current_formulario_id:
-            self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de guardar.")
+            self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de presionar el boton.")
             return
         self.save_form(True)
         self.update_trabajo_estado("Pendiente")
@@ -910,6 +910,9 @@ class NextWindow(QMainWindow):
         self.load_trabajos()
         self.clear_pdf_viewer()
         self.clear_pdf_list()
+        self.current_trabajo_id = None
+        self.skip_inscription_button.setEnabled(False)
+        self.devolver_button.setEnabled(False)
 
     def clear_pdf_list(self):
         self.pdf_listbox.clear()
