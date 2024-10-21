@@ -46,6 +46,8 @@ class NextWindow(QMainWindow):
         self.create_middle_frame()
         self.create_right_frame()
         self.set_title(Cantidad)
+        self.skip_inscription_button.setEnabled(False)
+        self.devolver_button.setEnabled(False)
 
         self.load_trabajos()
         
@@ -201,8 +203,8 @@ class NextWindow(QMainWindow):
         if selected_items:
             self.update_trabajo_estado("Asignado")
             self.load_trabajos()
-            self.current_trabajo_id = None
-            self.devolver_button.setEnabled(False)
+        self.current_trabajo_id = None
+        self.devolver_button.setEnabled(False)
         
     def cambiar_seleccion(self, item, lista):
         current_item = lista.currentItem()
@@ -424,7 +426,7 @@ class NextWindow(QMainWindow):
         
         self.skip_inscription_button = QPushButton("Saltar Inscripción ⏩", self)
         self.skip_inscription_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.skip_inscription_button.clicked.connect(lambda: self.save_form(True))
+        self.skip_inscription_button.clicked.connect(self.skip_inscription)
         self.middle_section_title_layout.addWidget(self.skip_inscription_button)
         
         self.middle_layout.addLayout(self.middle_section_title_layout)
@@ -533,6 +535,19 @@ class NextWindow(QMainWindow):
         self.submit_button = QPushButton("Registrar", self)
         self.submit_button.clicked.connect(self.submit_form)
         self.middle_layout.addWidget(self.submit_button)
+    
+    def skip_inscription(self):
+        if not self.current_trabajo_id or not self.current_formulario_id:
+            self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de guardar.")
+            return
+        self.save_form(True)
+        self.update_trabajo_estado("Pendiente")
+        self.load_trabajos()
+        self.clear_pdf_viewer()
+        self.clear_pdf_list()
+        self.current_trabajo_id = None
+        self.skip_inscription_button.setEnabled(False)
+        
         
     def update_completer(self, preferredValue):
         updated_list = [preferredValue] + [comuna for comuna in self.comunas_formatted_list if comuna != preferredValue]
@@ -821,14 +836,6 @@ class NextWindow(QMainWindow):
                 if not silence:
                     self.show_message("Info", "Guardar", "Formulario guardado exitosamente.")
                     print("Formulario guardado:", form_data)
-                    
-                if self.sender() == self.skip_inscription_button:
-                    self.update_trabajo_estado("Pendiente")
-                    self.load_trabajos()
-                    self.clear_pdf_viewer()
-                    self.clear_pdf_list()
-                    self.current_trabajo_id = None
-                    self.skip_inscription_button.setEnabled(False)
 
                 break
             except requests.RequestException as e:
@@ -914,6 +921,9 @@ class NextWindow(QMainWindow):
     
     def update_trabajo_estado(self, estado):
         try:
+            if not self.current_trabajo_id or not self.current_formulario_id:
+                self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de guardar.")
+                return
             if self.current_trabajo_info['estado_anterior'] != "Terminado":
                 response = requests.post(f'{API_BASE_URL}updateTrabajoEstado', json={
                     'trabajo_id': self.current_trabajo_id,
@@ -932,7 +942,7 @@ class NextWindow(QMainWindow):
                     "estado_nuevo": estado,
                     "datetime": self.get_datetime()
                 }
-                
+
                 self.session_history.insert(0, history_record)
                 
                 self.show_message("Info", "Estado Actualizado", f"El estado del trabajo se ha actualizado a {estado}.")
