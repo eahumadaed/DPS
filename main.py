@@ -48,7 +48,7 @@ class UserSelectionWindow(QWidget):
             response.raise_for_status()
             users = response.json()
             for user in users:
-                user_info = f"{user['name']} ({int(user['asignados'])} Asignados| {user['terminados']} Terminados)"
+                user_info = f"{user['name']} ({int(user['asignados'])+int(user['Pendiente'])} Asignados| {user['terminados']} Terminados)"
                 self.user_select.addItem(user_info, {
                     'id': user['id'],
                     'name': user['name'],
