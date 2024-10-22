@@ -204,7 +204,8 @@ class DetallesModal(QDialog):
             })
             response.raise_for_status()
             if not silence:
-                self.accept() 
+                self.accept()
+                self.deleteLater() 
                 self.parent().show_message("Info", "Guardar", "Detalles guardados exitosamente.")
             print("Detalles guardados:", detalles_data)
 

@@ -237,6 +237,7 @@ class InscriptionModal(QDialog):
             response.raise_for_status()
             if not silence:
                 self.accept()  # Cierra el modal al completar el guardado
+                self.deleteLater() 
                 self.parent().show_message("Info", "Guardar", "Inscripciones guardadas exitosamente.")
 
             print("Inscripciones guardadas:", inscriptions_data)

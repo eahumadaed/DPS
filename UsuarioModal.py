@@ -175,6 +175,7 @@ class UsuarioModal(QDialog):
                     print("Usuarios guardados:", usuarios_data)
                     self.accept()
                     self.parent().show_message("Info", "Guardar", "Usuarios guardados exitosamente.")
+                    self.deleteLater()
                 break
             except requests.RequestException as e:
                 if attempt == max_retries - 1:
