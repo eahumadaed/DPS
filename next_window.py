@@ -298,7 +298,9 @@ class NextWindow(QMainWindow):
             'user_genero': 'GENERO',
             'user_nombre': 'NOMBRE',
             'user_paterno': 'PARTERNO',
-            'user_materno': 'MATERNO'
+            'user_materno': 'MATERNO',
+            'OBS': 'OBS',
+            'SIN_INSCRIPCION': 'SIN INSCRIPCION'  #ALGUNOS CAMPOS CON ESPACIOS O NOMBRE PARTICULARES, SE DEBEN MAPEAR, POR EJEMPLO LOS CHECKBOX, YA QUE NO EXISTE UN "BOOLEAN" EN SQL, SOLO EXISTE UN TYNYINT(0,1)
         }
         
         for json_key, form_label in field_mapping.items():
