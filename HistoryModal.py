@@ -41,26 +41,28 @@ class HistoryModal(QDialog):
     def populate_table(self):
         self.table_widget.setRowCount(len(self.history_list))
         for row, data in enumerate(self.history_list):
-            self.table_widget.setItem(row, 0, QTableWidgetItem(data["numero_trabajo"]))
-            self.table_widget.setItem(row, 1, QTableWidgetItem(data["anio_trabajo"]))
-            self.table_widget.setItem(row, 2, QTableWidgetItem(data["estado_anterior"]))
-            self.table_widget.setItem(row, 3, QTableWidgetItem(data["estado_nuevo"]))
-            self.table_widget.setItem(row, 4, QTableWidgetItem(data["terminados_count"]))
-            self.table_widget.setItem(row, 5, QTableWidgetItem(data["datetime"]))
+            # Asignamos cada campo de data a su columna correspondiente
+            self.table_widget.setItem(row, 0, QTableWidgetItem(str(data["numero_trabajo"])))
+            self.table_widget.setItem(row, 1, QTableWidgetItem(str(data["anio_trabajo"])))
+            self.table_widget.setItem(row, 2, QTableWidgetItem(str(data["estado_anterior"])))
+            self.table_widget.setItem(row, 3, QTableWidgetItem(str(data["estado_nuevo"])))
+            self.table_widget.setItem(row, 4, QTableWidgetItem(str(data["terminados_count"])))  # Asegura que existe y es str
+            self.table_widget.setItem(row, 5, QTableWidgetItem(str(data["datetime"])))
 
-            # Alinear el texto al centro
+            # Alineamos el texto al centro
             for col in range(self.table_widget.columnCount()):
                 item = self.table_widget.item(row, col)
-                item.setTextAlignment(Qt.AlignCenter)
+                if item:
+                    item.setTextAlignment(Qt.AlignCenter)
 
-        # Permitir redimensionar columnas manualmente
-        self.table_widget.resizeColumnsToContents()  # Este ajuste se puede mantener para un inicio adecuado
+        # Ajuste inicial de tamaño de columnas y filas
+        self.table_widget.resizeColumnsToContents()
         self.table_widget.resizeRowsToContents()
 
         # Estilo visual
         self.table_widget.setStyleSheet("QTableWidget { background-color: #f9f9f9; }"
-                                         "QHeaderView { background-color: #d9d9d9; }"
-                                         "QTableWidget::item { padding: 8px; }")
+                                        "QHeaderView { background-color: #d9d9d9; }"
+                                        "QTableWidget::item { padding: 8px; }")
 
     def update_save_button_state(self):
         if self.table_widget.rowCount() > 0:

@@ -43,10 +43,8 @@ class InscriptionModal(QDialog):
         f_inscripcion.setPlaceholderText("dd/mm/yyyy")
         if data:
             f_inscripcion.setText(data['f_inscripcion'])
-        else:
-            f_inscripcion.setText("--/--/----")
         
-        f_inscripcion.textChanged.connect(self.auto_format_date)
+        f_inscripcion.textChanged.connect(lambda: self.parent().auto_format_date(f_inscripcion))
 
         layout.addWidget(f_inscripcion, 1, 1)
 
@@ -136,51 +134,6 @@ class InscriptionModal(QDialog):
         # Establecer el valor preferido en la instancia
         self.preferredValue = value.upper().replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
         self.update_completer(self.preferredValue)
-
-    def auto_format_date(self, text):
-        clean_text = text.replace("/", "")
-        
-        print(f"Texto ingresado: {text}")
-        print(f"Texto limpio: {clean_text}")
-        
-        if len(clean_text) > 8:
-            clean_text = clean_text[:8]
-        
-        formatted_text = ""
-        cursor_position = self.sender().cursorPosition()
-        print(f"Posición inicial del cursor: {cursor_position}")
-        
-        if len(clean_text) >= 2:
-            formatted_text += clean_text[:2] + "/"
-        else:
-            formatted_text += clean_text
-        
-        if len(clean_text) >= 4:
-            formatted_text += clean_text[2:4] + "/"
-        elif len(clean_text) > 2:
-            formatted_text += clean_text[2:4]
-        
-        if len(clean_text) > 4:
-            formatted_text += clean_text[4:]
-        
-        print(f"Texto formateado: {formatted_text}")
-        
-        prev_length = len(self.sender().text())
-        print(f"Longitud anterior del texto: {prev_length}")
-        
-        self.sender().blockSignals(True)
-        self.sender().setText(formatted_text)
-        self.sender().blockSignals(False)
-        
-        if len(formatted_text) > prev_length:
-            cursor_position += 1
-        elif len(formatted_text) < prev_length:
-            cursor_position -= 1
-        
-        print(f"Posición ajustada del cursor: {cursor_position}")
-        
-        self.sender().setCursorPosition(cursor_position)
-        print(f"Posición final del cursor: {self.sender().cursorPosition()}")
 
 
     def delete_inscription(self, container, inscription_id=None):

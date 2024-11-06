@@ -531,7 +531,7 @@ class NextWindow(QMainWindow):
         self.add_detalles_button.clicked.connect(self.open_detalles_modal)
         self.form_layout.addWidget(self.add_detalles_button)
         self.add_input_field("OBS", "select", ['--', 'PERFECTO', 'IMPERFECTO', 'PERFECCIONADO AL MARGEN', 'SIN RUT', 'NO SE LEE', 'NO CARGA'])
-        self.add_label("sugerencia","", "#8B0000")
+        self.add_label("sugerencia","", "#2C3E50")
 
         self.add_section_title("INTERNO")
         self.add_input_field("COMENTARIO", "textarea")
@@ -675,13 +675,14 @@ class NextWindow(QMainWindow):
             if options:
                 entry.addItems(options)
             entry.currentIndexChanged.connect(lambda: self.validate_fields())
+            entry.focusOutEvent = self.wrap_focus_out_event(entry.focusOutEvent)
         elif field_type == "date":
             entry = QLineEdit()
             entry.setPlaceholderText("--/--/----")
             date_regex = QRegExp(r"\d{0,8}")
             date_validator = QRegExpValidator(date_regex)
             entry.setValidator(date_validator)
-            entry.textChanged.connect(self.auto_format_date)
+            entry.textChanged.connect(lambda: self.auto_format_date(entry))
             entry.focusOutEvent = self.wrap_focus_out_event(entry.focusOutEvent)
         elif field_type == "checkbox":
             entry = QCheckBox()
@@ -729,40 +730,31 @@ class NextWindow(QMainWindow):
         height = int(entry.document().size().height()) + 5  # +20 para un espaciado adicional
         entry.setFixedHeight(max(height, 100))
     
-    def auto_format_date(self, text):
-        clean_text = text.replace("/", "")
+    def auto_format_date(self, entry):
+        sender = self.sender()
+        text = sender.text()
+        cursor_pos = sender.cursorPosition()
         
-        if len(clean_text) > 8:
-            clean_text = clean_text[:8]
+        cleaned_text = ''.join(filter(str.isdigit, text))
+        
+        if len(cleaned_text) > 8:
+            cleaned_text = cleaned_text[:8]
+        
+        formatted_text = ''
+        for i, char in enumerate(cleaned_text):
+            if i == 2 or i == 4:
+                formatted_text += '/'
+            formatted_text += char
 
-        formatted_text = ""
-        cursor_position = self.sender().cursorPosition()
+        prev_barras = text[:cursor_pos].count('/')
+        new_barras = formatted_text[:cursor_pos].count('/')
+        adjustment = new_barras - prev_barras
+        new_cursor_pos = cursor_pos + adjustment
         
-        if len(clean_text) >= 2:
-            formatted_text += clean_text[:2] + "/"
-        else:
-            formatted_text += clean_text
-        
-        if len(clean_text) >= 4:
-            formatted_text += clean_text[2:4] + "/"
-        elif len(clean_text) > 2:
-            formatted_text += clean_text[2:4]
-        
-        if len(clean_text) > 4:
-            formatted_text += clean_text[4:]
-        
-        prev_length = len(self.sender().text())
-        
-        self.sender().blockSignals(True)
-        self.sender().setText(formatted_text)
-        self.sender().blockSignals(False)
-        
-        if len(formatted_text) > prev_length:
-            cursor_position += 1
-        elif len(formatted_text) < prev_length:
-            cursor_position -= 1
-
-        self.sender().setCursorPosition(cursor_position)
+        sender.blockSignals(True)
+        sender.setText(formatted_text)
+        sender.setCursorPosition(new_cursor_pos)
+        sender.blockSignals(False)
 
     def on_rut_focus_out(self, entry, event):
         try:
@@ -840,6 +832,9 @@ class NextWindow(QMainWindow):
         form_data = self.get_form_data()
         wrong_entries = []
         
+        def add_wrong_entry(wrong_entry):
+            wrong_entries.append(wrong_entry)
+        
         def get_value(label_text):
             value = form_data[label_text]['value']
             if isinstance(value, str):
@@ -855,45 +850,53 @@ class NextWindow(QMainWindow):
                 else:
                     entry.setStyleSheet("")
         
-        labels_to_check = ['SIN INSCRIPCION', 'RUT', 'TIPO', 'NOMBRE', 'PTOS CONOCIDOS DE CAPTACION', 'OBS']
-        
-        for lbl in labels_to_check:
-            value = get_value(lbl)
-            # Si el checkbox 'SIN_INSCRIPCIÓN' está marcado
-            if lbl=='SIN INSCRIPCION' and value == True:
-                # Revisar que los campos de la inscripcion estén vacios
-                sub_labels_to_check = ['F_INSCRIPCION', 'COMUNA', 'CBR', 'FOJA', 'V', 'N°', 'AÑO']
-                for sub_lbl in sub_labels_to_check:
-                    sub_value = get_value(sub_lbl)
-                    if sub_value: wrong_entries.append(sub_lbl)
-            
-            # Si el checkbox 'SIN_INSCRIPCIÓN' NO está marcado         
-            elif lbl=='SIN INSCRIPCION' and value == False:
-                # Revisar que los campos obligatorios estén completos
-                sub_labels_to_check = ['CBR', 'FOJA', 'N°', 'AÑO']
-                for sub_lbl in sub_labels_to_check:
-                    sub_value = get_value(sub_lbl)
-                    if not sub_value: wrong_entries.append(sub_lbl)
-            # Revisar que el campo tipo y sus asociados estén completos
-            elif lbl == 'TIPO':
-                if not value: wrong_entries.append('TIPO')
-                if value == 'NATURAL':
-                    if not get_value('NAC'): wrong_entries.append('NAC')
-                    if not get_value('GENERO'): wrong_entries.append('GENERO')
-                    if not get_value('PARTERNO'): wrong_entries.append('PARTERNO')
-                if value == 'JURIDICA':
-                    if get_value('NAC'): wrong_entries.append('NAC')
-                    if get_value('GENERO'): wrong_entries.append('GENERO')
-                    if get_value('PARTERNO'): wrong_entries.append('PARTERNO')
-            elif not value: 
-                wrong_entries.append(lbl)
-        
+        if get_value('OBS')!='SIN RUT' and get_value('OBS')!='NO SE LEE' and get_value('OBS')!='NO CARGA':
+            if get_value('SIN INSCRIPCION')==True:
+                labels_to_check = ['F_INSCRIPCION', 'COMUNA', 'CBR', 'FOJA', 'V', 'N°', 'AÑO']
+                for lbl in labels_to_check:
+                    value = get_value(lbl)
+                    if value: add_wrong_entry(lbl)
+                if get_value('OBS')=="PERFECTO" or get_value('OBS')== "PERFECCIONADO AL MARGEN":
+                    add_wrong_entry('SIN INSCRIPCION')
+            else:
+                labels_to_check = ['CBR', 'FOJA', 'N°', 'AÑO']
+                for lbl in labels_to_check:
+                    value = get_value(lbl)
+                    if not value: add_wrong_entry(lbl)
+                    
+                if not get_value('OBS'): add_wrong_entry('OBS')
+                if(
+                    not get_value('PTOS CONOCIDOS DE CAPTACION') and not (
+                    get_value('OBS')=="PERFECTO" or
+                    get_value('OBS')=="PERFECCIONADO AL MARGEN"
+                )):
+                    add_wrong_entry('PTOS CONOCIDOS DE CAPTACION')
+                    
+                if get_value('OBS')!="PERFECTO" and get_value('OBS')!="PERFECCIONADO AL MARGEN":
+                    tipo_value = get_value('TIPO') 
+                    if not tipo_value: add_wrong_entry('TIPO')
+                    if tipo_value == 'NATURAL':
+                        if not get_value('NAC'): add_wrong_entry('NAC')
+                        if not get_value('GENERO'): add_wrong_entry('GENERO')
+                        if not get_value('PARTERNO'): add_wrong_entry('PARTERNO')
+                    if tipo_value == 'JURIDICA':
+                        if get_value('NAC'): add_wrong_entry('NAC')
+                        if get_value('GENERO'): add_wrong_entry('GENERO')
+                        if get_value('PARTERNO'): add_wrong_entry('PARTERNO')
+                    if not get_value('RUT'): add_wrong_entry('RUT')
+                    if not get_value('NOMBRE'): add_wrong_entry('NOMBRE')
+
         sugerencia = ""
         if not get_value('RUT'):
             sugerencia = "SIN RUT"
-            
-        elif (
-            (not wrong_entries or (len(wrong_entries)==1 and wrong_entries[0]=='OBS')) and
+        elif(
+            not get_value('CBR') or
+            not get_value('FOJA') or
+            not get_value('N°') or
+            not get_value('AÑO')
+        ):
+            sugerencia = "MARCAR SIN INSCRIPCION"
+        elif(
             get_value('NATURALEZA DEL AGUA') and
             get_value('TIPO DE DERECHO') and
             get_value('EJERCICIO DEL DERECHO') and
@@ -904,29 +907,35 @@ class NextWindow(QMainWindow):
         ):
             sugerencia = "PERFECTO"
             
-        elif ((not wrong_entries or (len(wrong_entries)==1 and wrong_entries[0]=='OBS')) and
+        elif(
+            get_value('NATURALEZA DEL AGUA') and
+            get_value('TIPO DE DERECHO') and
+            get_value('EJERCICIO DEL DERECHO') and
+            get_value('CANTIDAD') and
+            get_value('UNIDAD')
+        ):
+            sugerencia = "POSIBLE PERFECTO (Verificar punto de captación)"
+            
+        elif(
             get_value('NATURALEZA DEL AGUA') and
             get_value('TIPO DE DERECHO') and
             get_value('EJERCICIO DEL DERECHO')
         ):
-            sugerencia = "POSIBLE PERFECTO (Verificar punto de captación y caudal)"
-        
-        sugerencia_label = self.message_labels['sugerencia']
-        sugerencia_label.setText(f"SUGERENCIA: {sugerencia if sugerencia else "IMPERFECTO"}")
-        
-        if get_value('OBS')=="SIN RUT":
-            wrong_entries = []
-            sub_labels_to_check = ['RUT','NAC', 'GENERO', 'TIPO', 'NOMBRE', 'PARTERNO', 'MATERNO']
-            for sub_lbl in sub_labels_to_check:
-                sub_value = get_value(sub_lbl)
-                if sub_value: wrong_entries.append(sub_lbl)
+            sugerencia = "POSIBLE PERFECTO (Verificar caudal y punto de captación)"
             
+        elif(
+            not get_value('NATURALEZA DEL AGUA') or
+            not get_value('TIPO DE DERECHO') or
+            not get_value('EJERCICIO DEL DERECHO')
+        ):
+            sugerencia = "IMPERFECTO"
+            
+        sugerencia_label = self.message_labels['sugerencia']
         if get_value('SIN INSCRIPCION'):
-            wrong_entries = []
-            sub_labels_to_check = ['F_INSCRIPCION', 'COMUNA', 'CBR', 'FOJA', 'V', 'N°', 'AÑO']
-            for sub_lbl in sub_labels_to_check:
-                sub_value = get_value(sub_lbl)
-                if sub_value: wrong_entries.append(sub_lbl)
+            sugerencia_text=""
+        else:
+            sugerencia_text = f"SUGERENCIA: {sugerencia}"
+        sugerencia_label.setText(sugerencia_text)
             
         add_red_borders()
         
@@ -1023,7 +1032,7 @@ class NextWindow(QMainWindow):
             return
         wrong_entries = self.validate_fields()
         if wrong_entries:
-            self.show_message("Error", "Completar campos obligatorios", f"Completar los campos faltantes: \n-{"\n-".join(wrong_entries)}")
+            self.show_message("Error", "Campos inválidos", f"Revisar los campos: \n-{"\n-".join(wrong_entries)}")
             return
         self.save_form()
         self.update_trabajo_estado("Terminado")
@@ -1053,12 +1062,16 @@ class NextWindow(QMainWindow):
                 })
                 response.raise_for_status()
                 response_data = response.json()
+                
+                self.show_message("Info", "Estado Actualizado", f"El estado del trabajo se ha actualizado a {estado}.")
+                self.scroll_area.verticalScrollBar().setValue(0)
+                
                 terminados_count = None
                 if 'terminados_count' in response_data:
                     terminados_count = response_data['terminados_count']
                     self.set_title(terminados_count)
 
-                history_record = data = {
+                history_record = {
                     "numero_trabajo":self.current_trabajo_info['numero_trabajo'],
                     "anio_trabajo": self.current_trabajo_info['anio_trabajo'],
                     "estado_anterior": self.current_trabajo_info['estado_anterior'],
@@ -1066,11 +1079,8 @@ class NextWindow(QMainWindow):
                     "terminados_count": terminados_count,
                     "datetime": self.get_datetime()
                 }
-
-                self.session_history.insert(0, history_record)
                 
-                self.show_message("Info", "Estado Actualizado", f"El estado del trabajo se ha actualizado a {estado}.")
-                self.scroll_area.verticalScrollBar().setValue(0)
+                self.session_history.insert(0, history_record)
 
         except requests.RequestException as e:
             self.show_message("Error", "Error al actualizar estado", str(e))
