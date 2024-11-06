@@ -1,4 +1,5 @@
 from PyQt5.QtWidgets import QDialog, QTableWidget, QTableWidgetItem, QVBoxLayout, QHeaderView, QPushButton, QFileDialog, QMessageBox
+from PyQt5.QtCore import Qt
 import openpyxl
 from datetime import datetime
 
@@ -6,28 +7,36 @@ class HistoryModal(QDialog):
     def __init__(self, parent=None, history_list=[]):
         super().__init__(parent)
         self.history_list = history_list
-        self.setWindowTitle("Historial de la sesión")
-        self.setGeometry(200, 200, 900, 700)
+        self.terminados_count = self.calculate_terminados_count()
+        self.setWindowTitle(f"Historial de la sesión - Terminados: {self.terminados_count}")
+        self.setGeometry(200, 200, 1000, 700)
 
         self.layout = QVBoxLayout()
-
         self.table_widget = QTableWidget(self)
-        self.table_widget.setColumnCount(5)
-        self.table_widget.setHorizontalHeaderLabels(["Número de Trabajo", "Año", "Estado Anterior", "Estado Nuevo", "Fecha y Hora"])
+        self.table_widget.setColumnCount(6)
+        self.table_widget.setHorizontalHeaderLabels(["Numero", "Año", "Estado Anterior", "Estado Nuevo", "Terminados", "Fecha y Hora"])
         self.table_widget.setSizeAdjustPolicy(QTableWidget.AdjustToContents)
         self.table_widget.horizontalHeader().setStretchLastSection(True)
-        self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)  # Permitir redimensionar
+
+        self.populate_table()
 
         self.save_button = QPushButton("Guardar como Excel")
         self.save_button.setEnabled(False)
         self.save_button.clicked.connect(self.save_to_excel)
 
-        self.populate_table()
-        self.update_save_button_state()
-
         self.layout.addWidget(self.table_widget)
         self.layout.addWidget(self.save_button)
         self.setLayout(self.layout)
+
+        self.update_save_button_state()
+
+    def calculate_terminados_count(self):
+        count = 0
+        for data in self.history_list:
+            if data["estado_nuevo"] == "Terminado" and data["estado_anterior"] != "Terminado":
+                count += 1
+        return count
 
     def populate_table(self):
         self.table_widget.setRowCount(len(self.history_list))
@@ -36,7 +45,22 @@ class HistoryModal(QDialog):
             self.table_widget.setItem(row, 1, QTableWidgetItem(data["anio_trabajo"]))
             self.table_widget.setItem(row, 2, QTableWidgetItem(data["estado_anterior"]))
             self.table_widget.setItem(row, 3, QTableWidgetItem(data["estado_nuevo"]))
-            self.table_widget.setItem(row, 4, QTableWidgetItem(data["datetime"]))
+            self.table_widget.setItem(row, 4, QTableWidgetItem(data["terminados_count"]))
+            self.table_widget.setItem(row, 5, QTableWidgetItem(data["datetime"]))
+
+            # Alinear el texto al centro
+            for col in range(self.table_widget.columnCount()):
+                item = self.table_widget.item(row, col)
+                item.setTextAlignment(Qt.AlignCenter)
+
+        # Permitir redimensionar columnas manualmente
+        self.table_widget.resizeColumnsToContents()  # Este ajuste se puede mantener para un inicio adecuado
+        self.table_widget.resizeRowsToContents()
+
+        # Estilo visual
+        self.table_widget.setStyleSheet("QTableWidget { background-color: #f9f9f9; }"
+                                         "QHeaderView { background-color: #d9d9d9; }"
+                                         "QTableWidget::item { padding: 8px; }")
 
     def update_save_button_state(self):
         if self.table_widget.rowCount() > 0:
@@ -61,7 +85,7 @@ class HistoryModal(QDialog):
             workbook = openpyxl.Workbook()
             sheet = workbook.active
             sheet.title = "Historial"
-            headers = ["Número de Trabajo", "Año", "Estado Anterior", "Estado Nuevo", "Fecha y Hora"]
+            headers = ["Numero", "Año", "Estado Anterior", "Estado Nuevo", "Terminados", "Fecha y Hora"]
             for col, header in enumerate(headers, 1):
                 sheet.cell(row=1, column=col).value = header
 
