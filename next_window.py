@@ -347,20 +347,21 @@ class NextWindow(QMainWindow):
             selected_item = selected_items[0]
             selected_trabajo_id = selected_item.data(Qt.UserRole)
             
-            if self.current_trabajo_id is not None and self.current_trabajo_id != selected_trabajo_id:
-                self.save_form(True)
-
-            self.current_trabajo_id = selected_trabajo_id
-            
             item_info = selected_item.text()
-
             self.current_trabajo_info = {
                 "numero_trabajo":item_info.split("-")[0].strip(),
                 "anio_trabajo": item_info.split("-")[-1].split("(")[0].strip(),
                 "estado_anterior": item_info.split("(")[-1].replace(")","").strip()
             }
             
-            if self.current_trabajo_info['estado_anterior']=="Terminado":
+            if self.current_trabajo_id is not None and self.current_trabajo_id != selected_trabajo_id and self.current_trabajo_info['estado_anterior']!="Terminado":
+                self.save_form(silence=True)
+
+            self.current_trabajo_id = selected_trabajo_id
+            
+            
+            
+            if self.current_trabajo_info['estado_anterior']=="Terminado" or self.current_trabajo_info['estado_anterior']=="Corregir":
                 self.skip_inscription_button.setEnabled(False)
                 
             
@@ -551,7 +552,7 @@ class NextWindow(QMainWindow):
         if not self.current_trabajo_id or not self.current_formulario_id:
             self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de presionar el boton.")
             return
-        self.save_form(True)
+        self.save_form(silence=True)
         self.update_trabajo_estado("Pendiente")
         self.load_trabajos()
         self.clear_pdf_viewer()
@@ -850,7 +851,7 @@ class NextWindow(QMainWindow):
                 else:
                     entry.setStyleSheet("")
         
-        if get_value('OBS')!='SIN RUT' and get_value('OBS')!='NO SE LEE' and get_value('OBS')!='NO CARGA':
+        if get_value('OBS')!='NO SE LEE' and get_value('OBS')!='NO CARGA':
             if get_value('SIN INSCRIPCION')==True:
                 labels_to_check = ['F_INSCRIPCION', 'COMUNA', 'CBR', 'FOJA', 'V', 'N°', 'AÑO']
                 for lbl in labels_to_check:
@@ -868,24 +869,34 @@ class NextWindow(QMainWindow):
                 if(
                     not get_value('PTOS CONOCIDOS DE CAPTACION') and not (
                     get_value('OBS')=="PERFECTO" or
-                    get_value('OBS')=="PERFECCIONADO AL MARGEN"
+                    get_value('OBS')=="PERFECCIONADO AL MARGEN" or
+                    get_value('OBS')=="SIN RUT"
                 )):
                     add_wrong_entry('PTOS CONOCIDOS DE CAPTACION')
                     
                 if get_value('OBS')!="PERFECTO" and get_value('OBS')!="PERFECCIONADO AL MARGEN":
-                    tipo_value = get_value('TIPO') 
-                    if not tipo_value: add_wrong_entry('TIPO')
-                    if tipo_value == 'NATURAL':
-                        if not get_value('NAC'): add_wrong_entry('NAC')
-                        if not get_value('GENERO'): add_wrong_entry('GENERO')
-                        if not get_value('PARTERNO'): add_wrong_entry('PARTERNO')
-                    if tipo_value == 'JURIDICA':
+                    if get_value('OBS')!='SIN RUT':
+                        tipo_value = get_value('TIPO') 
+                        if not tipo_value: add_wrong_entry('TIPO')
+                        if tipo_value == 'NATURAL':
+                            if not get_value('NAC'): add_wrong_entry('NAC')
+                            if not get_value('GENERO'): add_wrong_entry('GENERO')
+                            if not get_value('PARTERNO'): add_wrong_entry('PARTERNO')
+                        if tipo_value == 'JURIDICA':
+                            if get_value('NAC'): add_wrong_entry('NAC')
+                            if get_value('GENERO'): add_wrong_entry('GENERO')
+                            if get_value('PARTERNO'): add_wrong_entry('PARTERNO')
+                        if not get_value('RUT'): add_wrong_entry('RUT')
+                        if not get_value('NOMBRE'): add_wrong_entry('NOMBRE')
+                    else:
+                        if get_value('RUT'): add_wrong_entry('RUT')
                         if get_value('NAC'): add_wrong_entry('NAC')
+                        if get_value('TIPO'): add_wrong_entry('TIPO')
                         if get_value('GENERO'): add_wrong_entry('GENERO')
+                        if get_value('NOMBRE'): add_wrong_entry('NOMBRE')
                         if get_value('PARTERNO'): add_wrong_entry('PARTERNO')
-                    if not get_value('RUT'): add_wrong_entry('RUT')
-                    if not get_value('NOMBRE'): add_wrong_entry('NOMBRE')
-
+                        if get_value('MATERNO'): add_wrong_entry('MATERNO')
+            
         sugerencia = ""
         if not get_value('RUT'):
             sugerencia = "SIN RUT"
@@ -947,6 +958,12 @@ class NextWindow(QMainWindow):
         if not self.current_trabajo_id or not self.current_formulario_id:
             self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de guardar.")
             return
+        if self.current_trabajo_info['estado_anterior']=="Terminado":
+            wrong_entries = self.validate_fields()
+            if wrong_entries:
+                self.show_message("Error", "Campos inválidos", f"Revisar los campos: \n-{"\n-".join(wrong_entries)}")
+                return
+        
         form_data = self.get_form_data()
         form_data['user_id'] = self.user_id
         form_data['trabajo_id'] = self.current_trabajo_id
