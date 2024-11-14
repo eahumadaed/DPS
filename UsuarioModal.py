@@ -84,6 +84,9 @@ class UsuarioModal(QDialog):
         layout.addWidget(paterno_label, 3, 0)
         paterno = QLineEdit()
         paterno.textChanged.connect(lambda: self.parent().to_uppercase(paterno))
+        paterno.textChanged.connect(lambda: self.parent().add_apellido_item(paterno))
+        paterno.setCompleter(self.parent().apellido_completer)
+        paterno.returnPressed.connect(lambda: self.parent().select_completion("PATERNO"))
         if data:
             paterno.setText(data['paterno'])
         layout.addWidget(paterno, 3, 1)
@@ -92,6 +95,9 @@ class UsuarioModal(QDialog):
         layout.addWidget(materno_label, 3, 2)
         materno = QLineEdit()
         materno.textChanged.connect(lambda: self.parent().to_uppercase(materno))
+        materno.textChanged.connect(lambda: self.parent().add_apellido_item(paterno))
+        materno.setCompleter(self.parent().apellido_completer)
+        materno.returnPressed.connect(lambda: self.parent().select_completion("PATERNO"))
         if data:
             materno.setText(data['materno'])
         layout.addWidget(materno, 3, 3)
@@ -273,6 +279,9 @@ class UsuarioModal(QDialog):
         layout.addWidget(paterno_label, 3, 0)
         paterno = QLineEdit()
         paterno.textChanged.connect(lambda: self.parent().to_uppercase(paterno))
+        paterno.textChanged.connect(lambda: self.parent().add_apellido_item(paterno))
+        paterno.setCompleter(self.parent().apellido_completer)
+        paterno.returnPressed.connect(lambda: self.parent().select_completion("PATERNO"))
         paterno.setText(data['paterno'])
         layout.addWidget(paterno, 3, 1)
 
@@ -280,6 +289,9 @@ class UsuarioModal(QDialog):
         layout.addWidget(materno_label, 3, 2)
         materno = QLineEdit()
         materno.textChanged.connect(lambda: self.parent().to_uppercase(materno))
+        materno.textChanged.connect(lambda: self.parent().add_apellido_item(paterno))
+        materno.setCompleter(self.parent().apellido_completer)
+        materno.returnPressed.connect(lambda: self.parent().select_completion("PATERNO"))
         materno.setText(data['materno'])
         layout.addWidget(materno, 3, 3)
 

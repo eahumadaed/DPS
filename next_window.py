@@ -14,6 +14,7 @@ import sys
 from comunas import Comunas_list
 import re
 from datetime import datetime
+import os
 
 API_BASE_URL = 'https://loverman.net/dbase/dga2024/api/api.php?action='
 api_base_url = API_BASE_URL
@@ -43,6 +44,8 @@ class NextWindow(QMainWindow):
         self.form_layout = QVBoxLayout(self.form_widget)
         
         self.devolver_button = QPushButton("Devolver a asignados", self)
+        
+        self.apellidos_list = []
         
         self.create_left_frame()
         self.create_middle_frame()
@@ -264,6 +267,75 @@ class NextWindow(QMainWindow):
         except requests.RequestException as e:
             self.show_message("Error", "Error al cargar el formulario", str(e))
             
+    def update_apellido_completer(self):
+        items = self.apellidos_list
+        apellidos = {}
+
+        fmt = '%Y-%m-%d %H:%M:%S'
+
+        for item in items:
+            apellido = item['apellido']
+            timestamp = item['timestamp']
+            trabajo_id = item['trabajo_id']
+
+            if isinstance(timestamp, str):
+                item_timestamp = datetime.strptime(timestamp, fmt)
+            else:
+                item_timestamp = timestamp
+
+            if apellido in apellidos:
+                current_data = apellidos[apellido]
+                current_timestamp = current_data['lastTimestamp']
+                
+                if isinstance(current_timestamp, str):
+                    current_timestamp = datetime.strptime(current_timestamp, fmt)
+
+                apellidos[apellido].update({
+                    "fromCurrentTrabajoId": trabajo_id == self.current_trabajo_id,
+                    "frecuencia": current_data['frecuencia'] + 1,
+                    "lastTimestamp": max(current_timestamp, item_timestamp)
+                })
+            else:
+                apellidos[apellido] = {
+                    "fromCurrentTrabajoId": trabajo_id == self.current_trabajo_id,
+                    "frecuencia": 1,
+                    "lastTimestamp": item_timestamp 
+                }
+
+        sorted_apellidos = sorted(
+            apellidos.items(),
+            key=lambda item: (
+                not item[1]["fromCurrentTrabajoId"],
+                -item[1]["frecuencia"],
+                -item[1]["lastTimestamp"].timestamp()
+            )
+        )
+
+        sorted_apellidos = [apellido for apellido, _ in sorted_apellidos]
+        model = QStringListModel(sorted_apellidos[1:])
+        self.apellido_completer.setModel(model)
+            
+    def add_apellido_item(self, entry):
+        apellido = entry.text().strip().upper().replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
+        if apellido:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            itemWasFound = False
+            for item in self.apellidos_list:
+                if item['entry'] == entry and item['trabajo_id']==self.current_trabajo_id:
+                    item.update({"apellido": apellido, "trabajo_id": self.current_trabajo_id, "timestamp": timestamp})
+                    itemWasFound = True
+            if not itemWasFound:
+                self.apellidos_list.append({"apellido": apellido, "entry": entry, "trabajo_id": self.current_trabajo_id, "timestamp": timestamp})
+        else:
+            self.delete_apellido_item(entry)
+        self.update_apellido_completer()
+    
+    def delete_apellido_item(self, entry):
+        for i, item in enumerate(self.apellidos_list):
+            if item['entry'] == entry and item['trabajo_id']==self.current_trabajo_id:
+                del self.apellidos_list[i]
+                return
+    
     def fill_form(self, formulario):
         self.clear_form()
 
@@ -297,7 +369,7 @@ class NextWindow(QMainWindow):
             'user_tipo': 'TIPO',
             'user_genero': 'GENERO',
             'user_nombre': 'NOMBRE',
-            'user_paterno': 'PARTERNO',
+            'user_paterno': 'PATERNO',
             'user_materno': 'MATERNO',
             'OBS': 'OBS',
             'SIN_INSCRIPCION': 'SIN INSCRIPCION'  #ALGUNOS CAMPOS CON ESPACIOS O NOMBRE PARTICULARES, SE DEBEN MAPEAR, POR EJEMPLO LOS CHECKBOX, YA QUE NO EXISTE UN "BOOLEAN" EN SQL, SOLO EXISTE UN TYNYINT(0,1)
@@ -494,6 +566,11 @@ class NextWindow(QMainWindow):
         self.user_layout = QGridLayout()
         self.form_layout.addLayout(self.user_layout)
 
+
+        self.apellido_completer = QCompleter(self.apellidos_list)
+        self.apellido_completer.setCompletionMode(QCompleter.InlineCompletion)
+        self.apellido_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        
         self.add_input_field("RUT", "text", parent_layout=self.user_layout, row=0, col=0)
         self.add_button_rut = QPushButton("Buscar", self)
         self.add_button_rut.clicked.connect(self.handle_rut_search)
@@ -503,7 +580,7 @@ class NextWindow(QMainWindow):
         self.add_input_field("TIPO", "select", ['--','NATURAL','JURIDICA'], parent_layout=self.user_layout, row=1, col=1)
         self.add_input_field("GENERO", "select", ['--','F','M'], parent_layout=self.user_layout, row=2, col=0)
         self.add_input_field("NOMBRE", "text", parent_layout=self.user_layout, row=2, col=1)
-        self.add_input_field("PARTERNO", "text", parent_layout=self.user_layout, row=3, col=0)
+        self.add_input_field("PATERNO", "text", parent_layout=self.user_layout, row=3, col=0)
         self.add_input_field("MATERNO", "text", parent_layout=self.user_layout, row=3, col=1)
         self.add_user_button = QPushButton("Agregar Usuarios", self)
         self.add_user_button.clicked.connect(self.open_usuarios_modal)
@@ -594,7 +671,7 @@ class NextWindow(QMainWindow):
             'TIPO': 'TIPO',
             'GENERO': 'GENERO',
             'NOMBRE': 'Nombre',
-            'PARTERNO': 'Apa',
+            'PATERNO': 'Apa',
             'MATERNO': 'Ama'
         }
 
@@ -656,7 +733,11 @@ class NextWindow(QMainWindow):
                 
             if label_text == "CBR":
                 entry.setCompleter(self.completer)
-                entry.returnPressed.connect(self.select_completion)
+                entry.returnPressed.connect(lambda: self.select_completion("CBR"))
+            if label_text=="PATERNO" or label_text=="MATERNO":
+                entry.textChanged.connect(lambda: self.add_apellido_item(entry))
+                entry.setCompleter(self.apellido_completer)
+                entry.returnPressed.connect(lambda: self.select_completion(label_text))
                 
             entry.textChanged.connect(lambda: self.to_uppercase(entry))
             entry.focusOutEvent = self.wrap_focus_out_event(entry.focusOutEvent)
@@ -721,8 +802,12 @@ class NextWindow(QMainWindow):
         return wrapped_event
         
     
-    def select_completion(self):
-        if self.completer.completionCount() > 0:
+    def select_completion(self, entry_lbl):
+        if entry_lbl == "CBR":
+            completer = self.completer
+        if entry_lbl=="PATERNO" or entry_lbl=="MATERNO":
+            completer = self.apellido_completer
+        if completer.completionCount() > 0:
             self.sender().setText(self.completer.currentCompletion())
         self.sender().focusNextPrevChild(True)
         
@@ -802,7 +887,7 @@ class NextWindow(QMainWindow):
         self.add_input_field(f"TIPO_{count}", "select", ['--','NATURAL','JURIDICA'])
         self.add_input_field(f"GENERO_{count}", "select", ['--','F','M'])
         self.add_input_field(f"NOMBRE_{count}", "text")
-        self.add_input_field(f"PARTERNO_{count}", "text")
+        self.add_input_field(f"PATERNO_{count}", "text")
         self.add_input_field(f"MATERNO_{count}", "text")
 
     def buscar_rut(self):
@@ -881,11 +966,11 @@ class NextWindow(QMainWindow):
                         if tipo_value == 'NATURAL':
                             if not get_value('NAC'): add_wrong_entry('NAC')
                             if not get_value('GENERO'): add_wrong_entry('GENERO')
-                            if not get_value('PARTERNO'): add_wrong_entry('PARTERNO')
+                            if not get_value('PATERNO'): add_wrong_entry('PATERNO')
                         if tipo_value == 'JURIDICA':
                             if get_value('NAC'): add_wrong_entry('NAC')
                             if get_value('GENERO'): add_wrong_entry('GENERO')
-                            if get_value('PARTERNO'): add_wrong_entry('PARTERNO')
+                            if get_value('PATERNO'): add_wrong_entry('PATERNO')
                         if not get_value('RUT'): add_wrong_entry('RUT')
                         if not get_value('NOMBRE'): add_wrong_entry('NOMBRE')
                     else:
@@ -894,7 +979,7 @@ class NextWindow(QMainWindow):
                         if get_value('TIPO'): add_wrong_entry('TIPO')
                         if get_value('GENERO'): add_wrong_entry('GENERO')
                         if get_value('NOMBRE'): add_wrong_entry('NOMBRE')
-                        if get_value('PARTERNO'): add_wrong_entry('PARTERNO')
+                        if get_value('PATERNO'): add_wrong_entry('PATERNO')
                         if get_value('MATERNO'): add_wrong_entry('MATERNO')
             
         sugerencia = ""
@@ -968,6 +1053,7 @@ class NextWindow(QMainWindow):
         form_data['user_id'] = self.user_id
         form_data['trabajo_id'] = self.current_trabajo_id
         form_data['formulario_id'] = self.current_formulario_id
+        form_data['PARTERNO'] = form_data['PATERNO']
         print(form_data)
         print("Datos del formulario que se enviarán:", json.dumps(form_data, indent=4))
         
