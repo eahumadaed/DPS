@@ -30,7 +30,6 @@ class NextWindow(QMainWindow):
         self.current_trabajo_info = None
         self.current_formulario_id = None
         self.modal_abierto = False
-        self.rut_was_verified = False
         self.user_name = user_name
         self.session_history = []
     
@@ -495,7 +494,6 @@ class NextWindow(QMainWindow):
 
 
     def on_directory_select(self):
-        self.rut_was_verified = False
         selected_items = []
         
         if self.sender() == self.dir_listwidget:
@@ -538,6 +536,9 @@ class NextWindow(QMainWindow):
             self.clear_pdf_list()
             self.clear_pdf_viewer()
             self.load_pdfs(selected_trabajo_id)
+            rut = self.rut_entry.text().strip()
+            if rut:
+                self.verificar_rut(self.rut_entry.text())
             
 
     def load_pdfs(self, trabajo_id):
@@ -1126,11 +1127,6 @@ class NextWindow(QMainWindow):
     
     def validate_fields(self):
         form_data = self.get_form_data()
-        
-        rut = form_data['RUT']['value']
-        if rut and not self.rut_was_verified:
-            self.verificar_rut(rut)
-            self.rut_was_verified = True
         
         wrong_entries = []
         
