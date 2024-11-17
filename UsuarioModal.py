@@ -119,6 +119,11 @@ class UsuarioModal(QDialog):
                 if rut in ruts:
                     ruts_repetidos.append(rut)
                 ruts.append(rut)
+                
+            rut_parent = self.parent().rut_entry.text()
+            
+            if rut_parent and rut_parent in ruts:
+                ruts_repetidos.append(rut)
         
         add_red_borders()
         

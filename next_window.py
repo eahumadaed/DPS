@@ -30,6 +30,7 @@ class NextWindow(QMainWindow):
         self.current_trabajo_info = None
         self.current_formulario_id = None
         self.modal_abierto = False
+        self.rut_was_verified = False
         self.user_name = user_name
         self.session_history = []
     
@@ -473,8 +474,6 @@ class NextWindow(QMainWindow):
         for json_key, form_label in field_mapping.items():
             if json_key in formulario:
                 entry_value = formulario[json_key]     
-                if json_key == 'user_rut' and entry_value:
-                    entry_value = self.verificar_rut(entry_value)['rut']
 
                 for label, entry in self.entries:
                     if label == form_label:
@@ -496,6 +495,7 @@ class NextWindow(QMainWindow):
 
 
     def on_directory_select(self):
+        self.rut_was_verified = False
         selected_items = []
         
         if self.sender() == self.dir_listwidget:
@@ -932,6 +932,7 @@ class NextWindow(QMainWindow):
                 entry.setFixedWidth(size)
             if label_text == "RUT":
                 entry.focusOutEvent = lambda event: self.on_rut_focus_out(entry, event)
+                self.rut_entry = entry
                 
             if label_text == "CBR":
                 entry.setCompleter(self.completer)
@@ -952,6 +953,8 @@ class NextWindow(QMainWindow):
         elif field_type == "number":
             entry = QLineEdit()
             entry.setValidator(QIntValidator())
+            if label_text == "AÑO":
+                entry.setMaxLength(4)
             if size:
                 entry.setFixedWidth(size)
             entry.focusOutEvent = self.wrap_focus_out_event(entry.focusOutEvent)
@@ -1123,6 +1126,12 @@ class NextWindow(QMainWindow):
     
     def validate_fields(self):
         form_data = self.get_form_data()
+        
+        rut = form_data['RUT']['value']
+        if rut and not self.rut_was_verified:
+            self.verificar_rut(rut)
+            self.rut_was_verified = True
+        
         wrong_entries = []
         
         def add_wrong_entry(wrong_entry):

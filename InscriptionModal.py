@@ -18,10 +18,12 @@ class InscriptionModal(QDialog):
 
         self.add_button = QPushButton("Agregar", self)
         self.add_button.clicked.connect(self.add_inscription)
+        self.add_button.setFocusPolicy(Qt.NoFocus)
         self.layout.addWidget(self.add_button)
 
         self.save_button = QPushButton("Guardar", self)
         self.save_button.clicked.connect(self.save_inscriptions)
+        self.save_button.setFocusPolicy(Qt.NoFocus)
         self.layout.addWidget(self.save_button)
 
         self.setLayout(self.layout)
@@ -99,6 +101,23 @@ class InscriptionModal(QDialog):
                 print(i)
                 
         add_red_borders()
+        
+        parent_inscription = {}
+        maping = {
+            'CBR':'cbr',
+            'FOJA': 'foja',
+            'N°': 'numero',
+            'AÑO': 'anio'
+        }
+        for label, entry in self.parent().entries:
+            if label in list(maping.keys()):
+                parent_inscription[maping[label]] = entry.text()
+        
+        print(parent_inscription)
+                
+        if parent_inscription in inscripciones:
+            inscripciones_repetidas.append(f"{parent_inscription['cbr']} {parent_inscription['anio']} {parent_inscription['numero']} {parent_inscription['foja']}")
+        
         return wrong_fields, inscripciones_repetidas
             
 
@@ -189,6 +208,7 @@ class InscriptionModal(QDialog):
         anio = QLineEdit()
         anio.focusOutEvent = self.wrap_focus_out_event(anio.focusOutEvent)
         anio.focusInEvent = self.wrap_focus_in_event(anio, anio.focusInEvent)
+        anio.setMaxLength(4)
         anio.setValidator(QIntValidator())
         if data:
             anio.setText(data['anio'])

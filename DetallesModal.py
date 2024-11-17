@@ -15,10 +15,12 @@ class DetallesModal(QDialog):
 
         self.add_button = QPushButton("Agregar Detalle", self)
         self.add_button.clicked.connect(self.add_detalle)
+        self.add_button.setFocusPolicy(Qt.NoFocus)
         self.layout.addWidget(self.add_button)
 
         self.save_button = QPushButton("Guardar", self)
         self.save_button.clicked.connect(self.save_detalles)
+        self.save_button.setFocusPolicy(Qt.NoFocus)
         self.layout.addWidget(self.save_button)
 
         self.setLayout(self.layout)
@@ -68,8 +70,6 @@ class DetallesModal(QDialog):
         for detalle in detalles_data:
             obs_exeptions = ["PERFECTO", "PERFECCIONADO AL MARGEN", "SIN RUT", "NO SE LEE", "NO CARGA"]
             obs_value = self.parent().obs_entry.currentText()
-            print(detalle)
-            print(obs_value)
             if not get_value(detalle, "referencia") and obs_value not in obs_exeptions:
                     add_wrong_field(detalle["referencia"])
         add_red_borders()
