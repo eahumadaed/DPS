@@ -1,11 +1,13 @@
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QListWidget, QPushButton, QFrame, QGridLayout, QLabel, QComboBox, QLineEdit, QListWidgetItem, QTextEdit
 import requests
+from PyQt5.QtCore import Qt
 
 class DetallesModal(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Gestionar Detalles")
         self.setGeometry(200, 200, 700, 700)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowCloseButtonHint)
         self.layout = QVBoxLayout()
 
         self.detalles_list = QListWidget(self)
@@ -21,6 +23,59 @@ class DetallesModal(QDialog):
 
         self.setLayout(self.layout)
         self.load_detalles()
+    
+    def validate_fields(self):
+        def add_wrong_field(wrong_field):
+            wrong_fields.append(wrong_field)
+        
+        def get_value(inscription, key):
+            value = inscription[key]['value']
+            if isinstance(value, str):
+                value = value.replace("\n", " ").strip()
+            if value == "--":
+                value = ""
+            return value
+
+        def add_red_borders():
+            entries = []
+            wrong_entries = []
+            for detalle in detalles_data:
+                detalles_values = list(detalle.values())
+                for value in detalles_values:
+                    entries.append(value['entry'])
+            
+            for field in wrong_fields:
+                wrong_entries.append(field['entry'])
+            
+            for entry in entries:
+                if entry in wrong_entries:
+                    entry.setStyleSheet("border-bottom: 2px solid red; border-radius: 0px;")
+                else:
+                    entry.setStyleSheet("")
+        
+        wrong_fields = []
+        
+        detalles_data = []
+        for i in range(self.detalles_list.count()):
+            container = self.detalles_list.itemWidget(self.detalles_list.item(i))
+            referencia_entry = container.layout().itemAt(20).widget()
+            data = {
+                'referencia': {"entry": referencia_entry, "value": referencia_entry.toPlainText()},
+            }
+
+            detalles_data.append(data)
+            
+        for detalle in detalles_data:
+            obs_exeptions = ["PERFECTO", "PERFECCIONADO AL MARGEN", "SIN RUT", "NO SE LEE", "NO CARGA"]
+            obs_value = self.parent().obs_entry.currentText()
+            print(detalle)
+            print(obs_value)
+            if not get_value(detalle, "referencia") and obs_value not in obs_exeptions:
+                    add_wrong_field(detalle["referencia"])
+        add_red_borders()
+        
+        return wrong_fields
+                    
 
     def add_detalle(self, data=None):
         container = QFrame(self)
@@ -122,6 +177,8 @@ class DetallesModal(QDialog):
         referencia_label = QLabel("Puntos Conocidos de Captación:")
         layout.addWidget(referencia_label, 10, 0)
         referencia = QTextEdit()
+        referencia.focusOutEvent = self.wrap_focus_out_event(referencia.focusOutEvent)
+        referencia.focusInEvent = self.wrap_focus_in_event(referencia, referencia.focusInEvent)
         
         referencia.setFixedHeight(100)
         if data:
@@ -138,6 +195,7 @@ class DetallesModal(QDialog):
         list_item.setSizeHint(container.sizeHint())
         self.detalles_list.addItem(list_item)
         self.detalles_list.setItemWidget(list_item, container)
+        self.validate_fields()
 
     def delete_detalle(self, container, detalle_id=None):
         if detalle_id:
@@ -168,6 +226,10 @@ class DetallesModal(QDialog):
         if not self.parent().current_formulario_id:
             self.parent().show_message("Error", "Guardar", "Seleccione un trabajo antes de guardar detalles.")
             return
+        wrong_fields = self.validate_fields()
+        if wrong_fields:
+            self.parent().show_message("Error", "Guardar", "Debe añadir puntos de captación")
+            return
 
         detalles_data = []
         for i in range(self.detalles_list.count()):
@@ -193,6 +255,8 @@ class DetallesModal(QDialog):
 
         if not detalles_data:
             if not silence:
+                self.accept()
+                self.deleteLater() 
                 self.parent().show_message("Info", "Guardar", "No hay detalles para guardar.")
             return
 
@@ -229,6 +293,18 @@ class DetallesModal(QDialog):
         except requests.RequestException as e:
             print(f"Error al cargar detalles: {e}")
             self.parent().show_message("Error", "Error al cargar detalles", str(e))
+    
+    def wrap_focus_in_event(self, entry, original_event):
+        def wrapped_event(event):
+            entry.setStyleSheet("")
+            return original_event(event)
+        return wrapped_event
+
+    def wrap_focus_out_event(self, original_event):
+        def wrapped_event(event):
+            self.validate_fields()  # Ejecutar validación
+            return original_event(event)  # Llamar al evento original
+        return wrapped_event
 
     def closeEvent(self, event):
         self.save_detalles(silence=True)

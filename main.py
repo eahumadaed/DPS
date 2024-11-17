@@ -1,4 +1,5 @@
-from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QPushButton, QLabel, QComboBox
+from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget, QPushButton, QLabel, QComboBox, QCheckBox, QHBoxLayout
+from PyQt5.QtCore import Qt
 import sys
 import requests
 from next_window import NextWindow
@@ -9,8 +10,6 @@ def log_exception(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
-    
-    # Guardar el error en un archivo de log
     with open("error_log.txt", "w") as f:
         f.write("Ocurrió un error no capturado:\n")
         traceback.print_exception(exc_type, exc_value, exc_traceback, file=f)
@@ -34,6 +33,22 @@ class UserSelectionWindow(QWidget):
         self.user_select = QComboBox(self)
         self.user_select.wheelEvent = lambda event: event.ignore()
         self.layout.addWidget(self.user_select)
+        
+        self.screen_layout = QHBoxLayout()
+        self.screen_layout.setContentsMargins(0, 0, 0, 0)  # Eliminar márgenes
+        self.screen_layout.setSpacing(0)
+        
+        self.screen_label = QLabel("Pantalla Pequeña:")
+        self.screen_layout.addWidget(self.screen_label)
+        self.screen_checkbox = QCheckBox()
+        self.screen_layout.addWidget(self.screen_checkbox)
+        
+        
+        
+        self.screen_layout.setAlignment(self.screen_checkbox, Qt.AlignLeft)
+        self.screen_layout.setAlignment(self.screen_label, Qt.AlignLeft)
+        
+        self.layout.addLayout(self.screen_layout)
         
         self.continue_button = QPushButton("Continuar", self)
         self.continue_button.clicked.connect(self.load_next_interface)
@@ -73,7 +88,7 @@ class UserSelectionWindow(QWidget):
             print(f"Terminados del usuario seleccionado: {selected_user_terminados}")
 
             self.hide()
-            self.next_window = NextWindow(selected_user_id, selected_user_name, selected_user_terminados)
+            self.next_window = NextWindow(selected_user_id, selected_user_name, selected_user_terminados, smallScreen=self.screen_checkbox.isChecked())
             self.next_window.showMaximized()
             self.next_window.show()
 

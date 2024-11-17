@@ -1,9 +1,9 @@
 from comunas import Comunas_list
 import requests,json
-from PyQt5.QtWidgets import QMessageBox, QCompleter, QApplication, QMainWindow, QVBoxLayout, QWidget, QFrame, QHBoxLayout, QListWidget, QPushButton, QLabel, QScrollArea, QSpacerItem, QSizePolicy, QTextEdit, QDateEdit, QGridLayout, QComboBox, QLineEdit, QCheckBox, QListWidgetItem
+from PyQt5.QtWidgets import QMessageBox, QStyle, QCompleter, QSplitter, QApplication, QMainWindow, QVBoxLayout, QWidget, QFrame, QHBoxLayout, QListWidget, QPushButton, QLabel, QScrollArea, QSpacerItem, QSizePolicy, QTextEdit, QDateEdit, QGridLayout, QComboBox, QLineEdit, QCheckBox, QListWidgetItem
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtCore import QUrl, Qt, QDate, QEvent, QStringListModel
-from PyQt5.QtGui import QIntValidator, QColor
+from PyQt5.QtGui import QIntValidator, QColor, QIcon
 from UsuarioModal import UsuarioModal
 from InscriptionModal import InscriptionModal
 from DetallesModal import DetallesModal
@@ -15,13 +15,16 @@ from comunas import Comunas_list
 import re
 from datetime import datetime
 import os
+from custom_browser import CustomWebEngineView, DrawSquareWidget
 
 API_BASE_URL = 'https://loverman.net/dbase/dga2024/api/api.php?action='
 api_base_url = API_BASE_URL
 
 class NextWindow(QMainWindow):
-    def __init__(self, user_id, user_name,Cantidad):
+    def __init__(self, user_id, user_name,Cantidad, smallScreen=False):
         super().__init__()
+        self.viewer_url = "https://www.dataresearch.cl/repositorio_dps_2024/viewerv2.html"
+        self.smallScreen = smallScreen
         self.user_id = user_id
         self.current_trabajo_id = None
         self.current_trabajo_info = None
@@ -45,6 +48,7 @@ class NextWindow(QMainWindow):
         
         self.devolver_button = QPushButton("Devolver a asignados", self)
         
+        self.nombres_list = []
         self.apellidos_list = []
         
         self.create_left_frame()
@@ -53,6 +57,18 @@ class NextWindow(QMainWindow):
         self.set_title(Cantidad)
         self.skip_inscription_button.setEnabled(False)
         self.devolver_button.setEnabled(False)
+
+        self.splitter = QSplitter(Qt.Horizontal)
+        
+        self.splitter.addWidget(self.left_frame)
+        self.splitter.addWidget(self.middle_frame)
+        self.splitter.addWidget(self.right_frame)
+        if smallScreen:
+            self.splitter.setSizes([240, 350, self.width()-590])
+        else:
+            self.splitter.setSizes([300, 550, self.width()-850])
+        
+        self.layout.addWidget(self.splitter)
 
         self.load_trabajos()
         
@@ -157,7 +173,7 @@ class NextWindow(QMainWindow):
         self.left_frame = QFrame(self)
         self.left_frame.setFrameShape(QFrame.StyledPanel)
         self.left_frame.setMaximumWidth(300)
-        self.layout.addWidget(self.left_frame)
+        #self.layout.addWidget(self.left_frame)
 
         self.left_layout = QVBoxLayout(self.left_frame)
 
@@ -267,7 +283,85 @@ class NextWindow(QMainWindow):
         except requests.RequestException as e:
             self.show_message("Error", "Error al cargar el formulario", str(e))
             
-    def update_apellido_completer(self):
+    def update_nombre_completer(self,entry):
+        if not self.recomendar_checkbox.isChecked():
+            model = QStringListModel([])
+            self.apellido_completer.setModel(model)
+            return
+        items = self.nombres_list
+        nombres = {}
+
+        fmt = '%Y-%m-%d %H:%M:%S'
+
+        for item in items:
+            nombre = item['nombre']
+            timestamp = item['timestamp']
+            trabajo_id = item['trabajo_id']
+
+            if isinstance(timestamp, str):
+                item_timestamp = datetime.strptime(timestamp, fmt)
+            else:
+                item_timestamp = timestamp
+
+            if nombre in nombres:
+                current_data = nombres[nombre]
+                current_timestamp = current_data['lastTimestamp']
+                
+                if isinstance(current_timestamp, str):
+                    current_timestamp = datetime.strptime(current_timestamp, fmt)
+
+                nombres[nombre].update({
+                    "fromCurrentTrabajoId": trabajo_id == self.current_trabajo_id,
+                    "frecuencia": current_data['frecuencia'] + 1,
+                    "lastTimestamp": max(current_timestamp, item_timestamp)
+                })
+            else:
+                nombres[nombre] = {
+                    "fromCurrentTrabajoId": trabajo_id == self.current_trabajo_id,
+                    "frecuencia": 1,
+                    "lastTimestamp": item_timestamp 
+                }
+
+        sorted_nombres = sorted(
+            nombres.items(),
+            key=lambda item: (
+                not item[1]["fromCurrentTrabajoId"],
+                -item[1]["frecuencia"],
+                -item[1]["lastTimestamp"].timestamp()
+            )
+        )
+
+        sorted_nombres = [nombre for nombre, _ in sorted_nombres if nombre.upper() != entry.text().upper()]
+        model = QStringListModel(sorted_nombres)
+        self.nombres_completer.setModel(model)
+            
+    def add_nombre_item(self, entry):
+        nombre = entry.text().strip().upper().replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
+        if nombre:
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            itemWasFound = False
+            for item in self.nombres_list:
+                if item['entry'] == entry and item['trabajo_id']==self.current_trabajo_id:
+                    item.update({"nombre": nombre, "trabajo_id": self.current_trabajo_id, "timestamp": timestamp})
+                    itemWasFound = True
+            if not itemWasFound:
+                self.nombres_list.append({"nombre": nombre, "entry": entry, "trabajo_id": self.current_trabajo_id, "timestamp": timestamp})
+        else:
+            self.delete_nombre_item(entry)
+        self.update_nombre_completer(entry)
+    
+    def delete_nombre_item(self, entry):
+        for i, item in enumerate(self.nombres_list):
+            if item['entry'] == entry and item['trabajo_id']==self.current_trabajo_id:
+                del self.nombres_list[i]
+                return
+            
+    def update_apellido_completer(self, entry):
+        if not self.recomendar_checkbox.isChecked():
+            model = QStringListModel([])
+            self.apellido_completer.setModel(model)
+            return
+        
         items = self.apellidos_list
         apellidos = {}
 
@@ -311,8 +405,9 @@ class NextWindow(QMainWindow):
             )
         )
 
-        sorted_apellidos = [apellido for apellido, _ in sorted_apellidos]
-        model = QStringListModel(sorted_apellidos[1:])
+        sorted_apellidos = [apellido for apellido, _ in sorted_apellidos if apellido.upper()!=entry.text().upper()]
+   
+        model = QStringListModel(sorted_apellidos)
         self.apellido_completer.setModel(model)
             
     def add_apellido_item(self, entry):
@@ -328,7 +423,7 @@ class NextWindow(QMainWindow):
                 self.apellidos_list.append({"apellido": apellido, "entry": entry, "trabajo_id": self.current_trabajo_id, "timestamp": timestamp})
         else:
             self.delete_apellido_item(entry)
-        self.update_apellido_completer()
+        self.update_apellido_completer(entry)
     
     def delete_apellido_item(self, entry):
         for i, item in enumerate(self.apellidos_list):
@@ -446,6 +541,7 @@ class NextWindow(QMainWindow):
             
 
     def load_pdfs(self, trabajo_id):
+        
         try:
             response = requests.get(f'{API_BASE_URL}getPDFs&trabajo_id={trabajo_id}')
             response.raise_for_status()
@@ -468,8 +564,10 @@ class NextWindow(QMainWindow):
             self.load_pdf(pdf_url)
 
     def load_pdf(self, encoded_pdf_path):
+        self.browser.reset_zoom()
         try:
-            pdf_url = f"https://loverman.net/dbase/dga2024/viewer.html?file={encoded_pdf_path}#page=1"
+            self.remove_highlights()
+            pdf_url = f"{self.viewer_url}?file={encoded_pdf_path}#page=1"
             self.browser.load(QUrl(pdf_url))
             print(f"Mostrando PDF desde URL: {pdf_url}")
             #self.load_text_file(encoded_pdf_path)
@@ -501,8 +599,8 @@ class NextWindow(QMainWindow):
         self.middle_frame = QFrame(self)
         self.middle_frame.setFrameShape(QFrame.StyledPanel)
         self.middle_frame.setMaximumWidth(700)
-        self.middle_frame.setMinimumWidth(600)
-        self.layout.addWidget(self.middle_frame)
+        self.middle_frame.setMinimumWidth(350 if self.smallScreen else 550)
+        #self.layout.addWidget(self.middle_frame)
 
         self.middle_layout = QVBoxLayout(self.middle_frame)
         self.middle_layout.setSpacing(5)
@@ -538,16 +636,26 @@ class NextWindow(QMainWindow):
         self.completer = QCompleter(self.comunas_formatted_list)
         self.completer.setCompletionMode(QCompleter.InlineCompletion)
         self.completer.setCaseSensitivity(Qt.CaseInsensitive)
-
-        self.add_input_field("SIN INSCRIPCION", "checkbox", parent_layout=self.inscriptions_layout, row=0, col=3)
-        self.add_input_field("F_INSCRIPCION", "date", parent_layout=self.inscriptions_layout, row=1, col=0)
-        self.add_input_field("COMUNA", "select", Comunas_list, parent_layout=self.inscriptions_layout, row=2, col=0)  # Agrega las comunas correspondientes
-        self.add_input_field("CBR", "text", parent_layout=self.inscriptions_layout, row=3, col=0, size=0)
-        self.add_input_field("FOJA", "number", parent_layout=self.inscriptions_layout, row=4, col=0, size=0)
-        self.add_input_field("V", "checkbox", parent_layout=self.inscriptions_layout, row=4, col=1, size=0)
-        self.add_input_field("N°", "number", parent_layout=self.inscriptions_layout, row=4, col=2, size=0)
-        self.add_input_field("AÑO", "number", parent_layout=self.inscriptions_layout, row=4, col=3, size=0)
         
+        if self.smallScreen:
+            self.add_input_field("SIN INSCRIPCION", "checkbox")
+            self.add_input_field("F_INSCRIPCION", "date")
+            self.add_input_field("COMUNA", "select", Comunas_list)  # Agrega las comunas correspondientes
+            self.add_input_field("CBR", "text")
+            self.add_input_field("FOJA", "number")
+            self.add_input_field("V", "checkbox")
+            self.add_input_field("N°", "number")
+            self.add_input_field("AÑO", "number")
+        else:
+            self.add_input_field("SIN INSCRIPCION", "checkbox", parent_layout=self.inscriptions_layout, row=0, col=3)
+            self.add_input_field("F_INSCRIPCION", "date", parent_layout=self.inscriptions_layout, row=1, col=0)
+            self.add_input_field("COMUNA", "select", Comunas_list, parent_layout=self.inscriptions_layout, row=2, col=0)  # Agrega las comunas correspondientes
+            self.add_input_field("CBR", "text", parent_layout=self.inscriptions_layout, row=3, col=0, size=0)
+            self.add_input_field("FOJA", "number", parent_layout=self.inscriptions_layout, row=4, col=0, size=0)
+            self.add_input_field("V", "checkbox", parent_layout=self.inscriptions_layout, row=4, col=1, size=0)
+            self.add_input_field("N°", "number", parent_layout=self.inscriptions_layout, row=4, col=2, size=0)
+            self.add_input_field("AÑO", "number", parent_layout=self.inscriptions_layout, row=4, col=3, size=0)
+            
         self.add_inscription_button = QPushButton("Agregar Inscripción", self)
         self.add_inscription_button.clicked.connect(self.open_inscription_modal)
         self.form_layout.addWidget(self.add_inscription_button)
@@ -563,9 +671,33 @@ class NextWindow(QMainWindow):
 
         # APARTADO: USUARIOS
         self.add_section_title("USUARIOS")
+        
+        self.recomendar_layout = QHBoxLayout()
+        self.recomendar_lbl = QLabel("Sugerir")
+        self.recomendar_layout.addWidget(self.recomendar_lbl)
+        self.recomendar_checkbox = QCheckBox()
+        self.recomendar_checkbox.setChecked(True)
+        self.recomendar_layout.addWidget(self.recomendar_checkbox)
+        
+        self.limpiar_recomendaciones_button = QPushButton("Borrar sugerencias")
+        self.limpiar_recomendaciones_button.clicked.connect(self.limpiar_recomendaciones)
+        self.recomendar_layout.addWidget(self.limpiar_recomendaciones_button)
+        
+        self.form_layout.addLayout(self.recomendar_layout)
+        
+        self.recomendar_layout.setAlignment(Qt.AlignRight)
+
+        self.recomendar_layout.setContentsMargins(0, 0, 0, 0)
+        self.recomendar_layout.setSpacing(5)
+
+        self.form_layout.addLayout(self.recomendar_layout)
+        
         self.user_layout = QGridLayout()
         self.form_layout.addLayout(self.user_layout)
-
+        
+        self.nombres_completer = QCompleter(self.nombres_list)
+        self.nombres_completer.setCompletionMode(QCompleter.InlineCompletion)
+        self.nombres_completer.setCaseSensitivity(Qt.CaseInsensitive)
 
         self.apellido_completer = QCompleter(self.apellidos_list)
         self.apellido_completer.setCompletionMode(QCompleter.InlineCompletion)
@@ -576,15 +708,26 @@ class NextWindow(QMainWindow):
         self.add_button_rut.clicked.connect(self.handle_rut_search)
         self.user_layout.addWidget(self.add_button_rut, 0, 1)
 
-        self.add_input_field("NAC", "select", ['--','CHILENA','EXTRANJERA'], parent_layout=self.user_layout, row=1, col=0)
-        self.add_input_field("TIPO", "select", ['--','NATURAL','JURIDICA'], parent_layout=self.user_layout, row=1, col=1)
-        self.add_input_field("GENERO", "select", ['--','F','M'], parent_layout=self.user_layout, row=2, col=0)
-        self.add_input_field("NOMBRE", "text", parent_layout=self.user_layout, row=2, col=1)
-        self.add_input_field("PATERNO", "text", parent_layout=self.user_layout, row=3, col=0)
-        self.add_input_field("MATERNO", "text", parent_layout=self.user_layout, row=3, col=1)
-        self.add_user_button = QPushButton("Agregar Usuarios", self)
-        self.add_user_button.clicked.connect(self.open_usuarios_modal)
-        self.form_layout.addWidget(self.add_user_button)
+        if self.smallScreen:
+            self.add_input_field("NAC", "select", ['--','CHILENA','EXTRANJERA'], parent_layout=self.user_layout, row=1, col=0)
+            self.add_input_field("TIPO", "select", ['--','NATURAL','JURIDICA'], parent_layout=self.user_layout, row=1, col=1)
+            self.add_input_field("GENERO", "select", ['--','F','M'], parent_layout=self.user_layout, row=2, col=0)
+            self.add_input_field("NOMBRE", "text")
+            self.add_input_field("PATERNO", "text")
+            self.add_input_field("MATERNO", "text")
+            self.add_user_button = QPushButton("Agregar Usuarios", self)
+            self.add_user_button.clicked.connect(self.open_usuarios_modal)
+            self.form_layout.addWidget(self.add_user_button)
+        else:
+            self.add_input_field("NAC", "select", ['--','CHILENA','EXTRANJERA'], parent_layout=self.user_layout, row=1, col=0)
+            self.add_input_field("TIPO", "select", ['--','NATURAL','JURIDICA'], parent_layout=self.user_layout, row=1, col=1)
+            self.add_input_field("GENERO", "select", ['--','F','M'], parent_layout=self.user_layout, row=2, col=0)
+            self.add_input_field("NOMBRE", "text", parent_layout=self.user_layout, row=2, col=1)
+            self.add_input_field("PATERNO", "text", parent_layout=self.user_layout, row=3, col=0)
+            self.add_input_field("MATERNO", "text", parent_layout=self.user_layout, row=3, col=1)
+            self.add_user_button = QPushButton("Agregar Usuarios", self)
+            self.add_user_button.clicked.connect(self.open_usuarios_modal)
+            self.form_layout.addWidget(self.add_user_button)
 
         # APARTADO: EJERCICIO
         self.add_section_title("EJERCICIO")
@@ -611,8 +754,9 @@ class NextWindow(QMainWindow):
         self.add_input_field("OBS", "select", ['--', 'PERFECTO', 'IMPERFECTO', 'PERFECCIONADO AL MARGEN', 'SIN RUT', 'NO SE LEE', 'NO CARGA'])
         self.add_label("sugerencia","", "#2C3E50")
 
+        self.comentario_layout = QVBoxLayout()
         self.add_section_title("INTERNO")
-        self.add_input_field("COMENTARIO", "textarea")
+        self.add_input_field("COMENTARIO", "textarea")#, parent_layout=self.comentario_layout)
 
         spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
         self.form_layout.addItem(spacer)
@@ -624,6 +768,14 @@ class NextWindow(QMainWindow):
         self.submit_button = QPushButton("Registrar", self)
         self.submit_button.clicked.connect(self.submit_form)
         self.middle_layout.addWidget(self.submit_button)
+        
+    def limpiar_recomendaciones(self):
+        self.nombres_list = []
+        self.apellidos_list = []
+        model = QStringListModel([])
+        self.nombres_completer.setModel(model)
+        self.apellido_completer.setModel(model)
+        
     
     def skip_inscription(self):
         if not self.current_trabajo_id or not self.current_formulario_id:
@@ -686,15 +838,62 @@ class NextWindow(QMainWindow):
                         if index >= 0:
                             entry.setCurrentIndex(index)
                             
+    def on_viewer_changed(self):
+        option = self.viewer_combo.currentText()
+        
+        if option == "Visor nuevo":
+            self.browser.ignoreZoom = True
+            viewer_url = "https://www.dataresearch.cl/repositorio_dps_2024/viewerv2.html"
+        elif option == "Visor antiguo":
+            self.browser.ignoreZoom = False
+            viewer_url = "https://www.dataresearch.cl/repositorio_dps_2024/viewerv1.html"
+        else:
+            viewer_url = self.viewer_url
+            
+        print(viewer_url)
+        
+        if self.viewer_url!=viewer_url:
+            self.viewer_url = viewer_url
+            selected_items = self.pdf_listbox.selectedItems()
+            if selected_items:
+                selected_item = selected_items[0]
+                index = self.pdf_listbox.row(selected_item)
+                pdf_url = self.pdf_paths[index]
+                print(f"PDF seleccionado: {pdf_url}")
+                self.load_pdf(pdf_url)
+        
+    def remove_highlights(self):
+        self.browser.selection_widget.rects = []
+        self.browser.selection_widget.update()
+                            
     def create_right_frame(self):
         self.right_frame = QFrame(self)
         self.right_frame.setFrameShape(QFrame.StyledPanel)
-        self.layout.addWidget(self.right_frame, stretch=1)
+        #self.layout.addWidget(self.right_frame, stretch=1)
 
         self.right_layout = QVBoxLayout(self.right_frame)
-    
-        self.browser = QWebEngineView()
+        self.right_layout.setContentsMargins(0, 0, 0, 0)
+        self.right_layout.setSpacing(0)
+        
+        self.options_layout = QHBoxLayout()
+        self.options_layout.setContentsMargins(5, 5, 5, 5)
+        self.remove_highlights_button = QPushButton("Quitar marcas")
+        self.remove_highlights_button.clicked.connect(self.remove_highlights)
+        self.remove_highlights_button.adjustSize()
+        self.remove_highlights_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.options_layout.addWidget(self.remove_highlights_button, alignment=Qt.AlignLeft)
+        
+        self.viewer_combo = QComboBox()
+        self.viewer_combo.addItems(["Visor nuevo", "Visor antiguo"])
+        self.viewer_combo.currentIndexChanged.connect(self.on_viewer_changed)
+        self.viewer_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.options_layout.addWidget(self.viewer_combo, alignment=Qt.AlignRight)
+        
+        self.right_layout.addLayout(self.options_layout)
+        
+        self.browser = CustomWebEngineView()
         self.right_layout.addWidget(self.browser)
+        
     
     def eventFilter(self, source, event):
         if event.type() == QEvent.KeyPress:
@@ -715,7 +914,10 @@ class NextWindow(QMainWindow):
             parent_layout = self.form_layout
 
         container = QFrame(self.form_widget)
-        container_layout = QHBoxLayout(container)
+        if self.smallScreen and (label_text=="COMENTARIO" or label_text=="PTOS CONOCIDOS DE CAPTACION"):
+            container_layout = QVBoxLayout(container)
+        else:
+            container_layout = QHBoxLayout(container)
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.setSpacing(5)
 
@@ -733,7 +935,13 @@ class NextWindow(QMainWindow):
                 
             if label_text == "CBR":
                 entry.setCompleter(self.completer)
-                entry.returnPressed.connect(lambda: self.select_completion("CBR"))
+                entry.returnPressed.connect(lambda: self.select_completion(label_text))
+            
+            if label_text=="NOMBRE":
+                entry.textChanged.connect(lambda: self.add_nombre_item(entry))
+                entry.setCompleter(self.nombres_completer)
+                entry.returnPressed.connect(lambda: self.select_completion(label_text))
+            
             if label_text=="PATERNO" or label_text=="MATERNO":
                 entry.textChanged.connect(lambda: self.add_apellido_item(entry))
                 entry.setCompleter(self.apellido_completer)
@@ -754,6 +962,8 @@ class NextWindow(QMainWindow):
                 entry.currentIndexChanged.connect(
                     lambda index: self.set_preferred_value(entry.currentText())
                 )
+            elif label_text == "OBS":
+                self.obs_entry = entry
             if options:
                 entry.addItems(options)
             entry.currentIndexChanged.connect(lambda: self.validate_fields())
@@ -779,6 +989,9 @@ class NextWindow(QMainWindow):
         else:
             raise ValueError(f"Tipo de campo desconocido: {field_type}")
         entry.focusInEvent = self.wrap_focus_in_event(entry, entry.focusInEvent)
+        
+        if self.smallScreen:
+            entry.setMinimumWidth(50)
 
         container_layout.addWidget(entry)
         self.entries.append((label_text, entry))
@@ -788,7 +1001,7 @@ class NextWindow(QMainWindow):
         else:
             parent_layout.addWidget(container)
         print(f"Campo agregado: {label_text}, tipo: {field_type}")
-    
+   
     def wrap_focus_in_event(self, entry, original_event):
         def wrapped_event(event):
             entry.setStyleSheet("")
@@ -803,12 +1016,6 @@ class NextWindow(QMainWindow):
         
     
     def select_completion(self, entry_lbl):
-        if entry_lbl == "CBR":
-            completer = self.completer
-        if entry_lbl=="PATERNO" or entry_lbl=="MATERNO":
-            completer = self.apellido_completer
-        if completer.completionCount() > 0:
-            self.sender().setText(self.completer.currentCompletion())
         self.sender().focusNextPrevChild(True)
         
     def adjust_height(self,entry):
@@ -971,6 +1178,7 @@ class NextWindow(QMainWindow):
                             if get_value('NAC'): add_wrong_entry('NAC')
                             if get_value('GENERO'): add_wrong_entry('GENERO')
                             if get_value('PATERNO'): add_wrong_entry('PATERNO')
+                            if get_value('MATERNO'): add_wrong_entry('MATERNO')
                         if not get_value('RUT'): add_wrong_entry('RUT')
                         if not get_value('NOMBRE'): add_wrong_entry('NOMBRE')
                     else:
@@ -1249,7 +1457,7 @@ class NextWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    next_window = NextWindow(1, "Edinson", 0)
+    next_window = NextWindow(1, "Edinson", 0, False)
     next_window.showMaximized()
     next_window.show()
     sys.exit(app.exec_())
