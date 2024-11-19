@@ -55,8 +55,6 @@ class NextWindow(QMainWindow):
         self.create_middle_frame()
         self.create_right_frame()
         self.set_title(Cantidad)
-        self.skip_inscription_button.setEnabled(False)
-        self.devolver_button.setEnabled(False)
 
         self.splitter = QSplitter(Qt.Horizontal)
         
@@ -137,7 +135,7 @@ class NextWindow(QMainWindow):
 
 
         except (ValueError, IndexError) as e:
-            print(f"Error al verificar rut")
+            #print(f"Error al verificar rut")
             return {"rut":rut, "errorWasFounded": False}
         
     def get_datetime(self):
@@ -166,7 +164,7 @@ class NextWindow(QMainWindow):
             response.raise_for_status()
             return True, response.json()
         except Exception as e:
-            print(f"Error al buscar RUT: {e}")
+            #print(f"Error al buscar RUT: {e}")
             return False, {}
 
     def create_left_frame(self):
@@ -225,7 +223,6 @@ class NextWindow(QMainWindow):
             self.update_trabajo_estado("Asignado")
             self.load_trabajos()
         self.current_trabajo_id = None
-        self.devolver_button.setEnabled(False)
         
     def cambiar_seleccion(self, item, lista):
         current_item = lista.currentItem()
@@ -235,6 +232,9 @@ class NextWindow(QMainWindow):
             lista.setCurrentRow(selected_row)
 
     def load_trabajos(self):
+        self.skip_inscription_button.setEnabled(False)
+        self.devolver_button.setEnabled(False)
+        self.herencia_button.setEnabled(False)
         try:
             self.dir_listwidget.clear()
             self.dir_pendientes_list.clear()
@@ -247,21 +247,34 @@ class NextWindow(QMainWindow):
                 if trabajo['estado'] == "Corregir":
                     existsCorregir = True
                     break
+            
+            herencias_pendientes = []
+            
             for trabajo in trabajos:
-                item = QListWidgetItem(f"{trabajo['numero']} - {trabajo['anio']} ({trabajo['estado']})")
+                item = QListWidgetItem(f"{trabajo['numero']}-{trabajo['anio']} ({trabajo['estado']}) [{trabajo['trabajo_tipo']}]")
                 item.setData(Qt.UserRole, trabajo['id'])
                 
                 if trabajo['estado']=="Terminado":
                     item.setForeground(QColor('green'))
                     self.dir_listwidget.addItem(item)
-                if existsCorregir:
+                elif existsCorregir:
                     if trabajo['estado']=="Corregir":
                         self.dir_listwidget.addItem(item)
-                else:
-                    if trabajo['estado']=="Pendiente":
-                        self.dir_pendientes_list.addItem(item)
+                        
+                elif trabajo['estado']=="Pendiente":
+                    if trabajo['trabajo_tipo'] == "HERENCIA":
+                        herencias_pendientes.append(trabajo)
                     else:
-                        self.dir_listwidget.addItem(item)
+                        self.dir_pendientes_list.addItem(item)
+                else:
+                    self.dir_listwidget.addItem(item)
+                    
+            for trabajo in herencias_pendientes:
+                item = QListWidgetItem(f"{trabajo['numero']}-{trabajo['anio']} ({trabajo['estado']}) [{trabajo['trabajo_tipo']}]")
+                item.setData(Qt.UserRole, trabajo['id'])
+                item.setForeground(QColor('blue'))
+                self.dir_pendientes_list.addItem(item)
+                
         except requests.RequestException as e:
             self.show_message("Error", "Error al cargar trabajos", str(e))
 
@@ -272,14 +285,14 @@ class NextWindow(QMainWindow):
             formulario = response.json()
             if 'id' in formulario:
                 self.current_formulario_id = formulario['id']
-                print(f"Id 2 Del formulario:{self.current_formulario_id}")
+                #print(f"Id 2 Del formulario:{self.current_formulario_id}")
                 self.fill_form(formulario)
 
             else:
                 self.fill_form(formulario)
 
                 self.current_formulario_id = formulario['id']
-                print(f"Id 1 Del formulario:{self.current_formulario_id}")
+                #print(f"Id 1 Del formulario:{self.current_formulario_id}")
         except requests.RequestException as e:
             self.show_message("Error", "Error al cargar el formulario", str(e))
             
@@ -490,8 +503,24 @@ class NextWindow(QMainWindow):
                             entry.setDate(QDate.fromString(entry_value, "dd/MM/yyyy"))
 
         
-        print("Formulario cargado:", formulario)
+        #print("Formulario cargado:", formulario)
 
+    def get_info_from_trabajo_item(self, item):
+        item_text = item.text()
+        numero_trabajo = item_text.split("-")[0].strip()
+        anio_trabajo =  item_text.split("-")[-1].split("(")[0].strip()
+        estado_anterior = item_text.split("(")[-1].split(")")[0].strip()
+        tipo_doc = item_text.split("[")[-1].replace("]","").strip()
+        
+        data = {
+            "numero_trabajo":numero_trabajo,
+            "anio_trabajo": anio_trabajo,
+            "estado_anterior": estado_anterior,
+            "tipo_doc": tipo_doc
+        }
+        
+        return data
+        
 
     def on_directory_select(self):
         selected_items = []
@@ -512,25 +541,27 @@ class NextWindow(QMainWindow):
             selected_item = selected_items[0]
             selected_trabajo_id = selected_item.data(Qt.UserRole)
             
-            item_info = selected_item.text()
-            self.current_trabajo_info = {
-                "numero_trabajo":item_info.split("-")[0].strip(),
-                "anio_trabajo": item_info.split("-")[-1].split("(")[0].strip(),
-                "estado_anterior": item_info.split("(")[-1].replace(")","").strip()
-            }
+            self.prev_estado_anterior = None
+            if self.current_trabajo_info and 'estado_anterior' in self.current_trabajo_info:
+                self.prev_estado_anterior = self.current_trabajo_info['estado_anterior']
             
-            if self.current_trabajo_id is not None and self.current_trabajo_id != selected_trabajo_id and self.current_trabajo_info['estado_anterior']!="Terminado":
+            self.current_trabajo_info = self.get_info_from_trabajo_item(selected_item)
+            #print(self.current_trabajo_id)
+            
+            if self.prev_estado_anterior and self.current_trabajo_id and self.current_trabajo_id != selected_trabajo_id and self.prev_estado_anterior!="Terminado":
                 self.save_form(silence=True)
 
             self.current_trabajo_id = selected_trabajo_id
             
-            
-            
             if self.current_trabajo_info['estado_anterior']=="Terminado" or self.current_trabajo_info['estado_anterior']=="Corregir":
                 self.skip_inscription_button.setEnabled(False)
+                self.herencia_button.setEnabled(False)
+            
+            else:
+                self.herencia_button.setEnabled(True)
                 
             
-            print(f"Trabajo seleccionado: {selected_trabajo_id}")
+            #print(f"Trabajo seleccionado: {selected_trabajo_id}")
             self.load_formulario(selected_trabajo_id)
             self.validate_fields()
             self.clear_pdf_list()
@@ -561,7 +592,7 @@ class NextWindow(QMainWindow):
             selected_item = selected_items[0]
             index = self.pdf_listbox.row(selected_item)
             pdf_url = self.pdf_paths[index]
-            print(f"PDF seleccionado: {pdf_url}")
+            #print(f"PDF seleccionado: {pdf_url}")
             self.load_pdf(pdf_url)
 
     def load_pdf(self, encoded_pdf_path):
@@ -570,7 +601,7 @@ class NextWindow(QMainWindow):
             self.remove_highlights()
             pdf_url = f"{self.viewer_url}?file={encoded_pdf_path}#page=1"
             self.browser.load(QUrl(pdf_url))
-            print(f"Mostrando PDF desde URL: {pdf_url}")
+            #print(f"Mostrando PDF desde URL: {pdf_url}")
             #self.load_text_file(encoded_pdf_path)
         except Exception as e:
             self.show_message("Error", "Error al cargar PDF", str(e))
@@ -586,7 +617,7 @@ class NextWindow(QMainWindow):
             else:
                 self.text_edit.clear()
         except requests.RequestException as e:
-            print(f"Error al cargar el archivo de texto: {e}")
+            #print(f"Error al cargar el archivo de texto: {e}")
             self.text_edit.clear()
 
     def navigate_pdf(self, direction):
@@ -609,6 +640,11 @@ class NextWindow(QMainWindow):
         self.middle_section_title_layout = QHBoxLayout()
         self.form_label = QLabel("Formulario", self)
         self.middle_section_title_layout.addWidget(self.form_label)
+        
+        self.herencia_button = QPushButton("Herencia 🏛️", self)
+        self.herencia_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.herencia_button.clicked.connect(lambda: self.cambiar_tipo_doc("HERENCIA"))
+        self.middle_section_title_layout.addWidget(self.herencia_button)
         
         self.skip_inscription_button = QPushButton("Saltar Inscripción ⏩", self)
         self.skip_inscription_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
@@ -769,6 +805,23 @@ class NextWindow(QMainWindow):
         self.submit_button = QPushButton("Registrar", self)
         self.submit_button.clicked.connect(self.submit_form)
         self.middle_layout.addWidget(self.submit_button)
+    
+    def cambiar_tipo_doc(self, tipo_doc):
+        if not self.current_trabajo_id or not self.current_formulario_id:
+            self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de presionar el boton.")
+            return
+        if tipo_doc=="HERENCIA":
+            if self.current_trabajo_info['estado_anterior']!="Pendiente" or self.current_trabajo_info['tipo_doc']!="HERENCIA":
+                self.update_trabajo_estado("Pendiente", "HERENCIA")
+                self.prev_estado_anterior = None # Limpiar para no activar revisión de campos en save form
+                self.save_form(silence=True)
+            else:
+                self.show_message("Error","Sin cambios", "El trabajo seleccionado ya es una herencia")
+                return
+        self.load_trabajos()
+        self.clear_pdf_viewer()
+        self.clear_pdf_list()
+        self.current_trabajo_id = None
         
     def limpiar_recomendaciones(self):
         self.nombres_list = []
@@ -788,7 +841,6 @@ class NextWindow(QMainWindow):
         self.clear_pdf_viewer()
         self.clear_pdf_list()
         self.current_trabajo_id = None
-        self.skip_inscription_button.setEnabled(False)
         
         
     def update_completer(self, preferredValue):
@@ -812,7 +864,7 @@ class NextWindow(QMainWindow):
         if rut_entry:
             rut = rut_entry.text().split("-")[0]
             success, data = self.buscar_rut_api(rut)
-            print(f"{success} - {data}")
+            #print(f"{success} - {data}")
             if success:
                 self.fill_user_fields(data)
             else:
@@ -851,7 +903,7 @@ class NextWindow(QMainWindow):
         else:
             viewer_url = self.viewer_url
             
-        print(viewer_url)
+        #print(viewer_url)
         
         if self.viewer_url!=viewer_url:
             self.viewer_url = viewer_url
@@ -860,7 +912,7 @@ class NextWindow(QMainWindow):
                 selected_item = selected_items[0]
                 index = self.pdf_listbox.row(selected_item)
                 pdf_url = self.pdf_paths[index]
-                print(f"PDF seleccionado: {pdf_url}")
+                #print(f"PDF seleccionado: {pdf_url}")
                 self.load_pdf(pdf_url)
         
     def remove_highlights(self):
@@ -878,7 +930,7 @@ class NextWindow(QMainWindow):
         
         self.options_layout = QHBoxLayout()
         self.options_layout.setContentsMargins(5, 5, 5, 5)
-        self.remove_highlights_button = QPushButton("Quitar marcas")
+        self.remove_highlights_button = QPushButton("Quitar marcas ❌")
         self.remove_highlights_button.clicked.connect(self.remove_highlights)
         self.remove_highlights_button.adjustSize()
         self.remove_highlights_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
@@ -898,8 +950,9 @@ class NextWindow(QMainWindow):
     
     def eventFilter(self, source, event):
         if event.type() == QEvent.KeyPress:
-            if event.key() == Qt.Key_F and event.modifiers() == Qt.ControlModifier:
-                self.find_dialog.show()
+            if event.key() == Qt.Key_Tab:
+                event.ignore()
+                self.focusNextChild()
                 return True
         return super().eventFilter(source, event)
     
@@ -990,6 +1043,9 @@ class NextWindow(QMainWindow):
             entry.textChanged.connect(lambda: self.adjust_height(entry))
             entry.textChanged.connect(lambda: self.to_uppercase(entry))
             entry.focusOutEvent = self.wrap_focus_out_event(entry.focusOutEvent)
+            if label_text=="PTOS CONOCIDOS DE CAPTACION":
+                entry.installEventFilter(self)
+                self.referencia_entry = entry
         else:
             raise ValueError(f"Tipo de campo desconocido: {field_type}")
         entry.focusInEvent = self.wrap_focus_in_event(entry, entry.focusInEvent)
@@ -1004,7 +1060,7 @@ class NextWindow(QMainWindow):
             parent_layout.addWidget(container, row, col)
         else:
             parent_layout.addWidget(container)
-        print(f"Campo agregado: {label_text}, tipo: {field_type}")
+        #print(f"Campo agregado: {label_text}, tipo: {field_type}")
    
     def wrap_focus_in_event(self, entry, original_event):
         def wrapped_event(event):
@@ -1250,25 +1306,39 @@ class NextWindow(QMainWindow):
         
         return wrong_entries 
         
+    def buscar_item_por_id(self):
+        for index in range(self.dir_listwidget.count()):
+            item = self.dir_listwidget.item(index)
+            if item.data(Qt.UserRole) == self.current_trabajo_id:
+                return item.text() 
+        for index in range(self.dir_pendientes_list.count()):
+            item = self.dir_pendientes_list.item(index)
+            if item.data(Qt.UserRole) == self.current_trabajo_id:
+                return item.text() 
+       
+        return None  # Retorna None si no se encuentra el ID
 
+    
     def save_form(self,silence=False):
         self.validate_fields()
         if not self.current_trabajo_id or not self.current_formulario_id:
             self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de guardar.")
             return
-        if self.current_trabajo_info['estado_anterior']=="Terminado":
+        if self.prev_estado_anterior =="Terminado":
             wrong_entries = self.validate_fields()
             if wrong_entries:
                 self.show_message("Error", "Campos inválidos", f"Revisar los campos: \n-{"\n-".join(wrong_entries)}")
                 return
         
+        selected_item = self.buscar_item_por_id()
+        print("GUARDADO: ", selected_item)
         form_data = self.get_form_data()
         form_data['user_id'] = self.user_id
         form_data['trabajo_id'] = self.current_trabajo_id
         form_data['formulario_id'] = self.current_formulario_id
         form_data['PARTERNO'] = form_data['PATERNO']
-        print(form_data)
-        print("Datos del formulario que se enviarán:", json.dumps(form_data, indent=4))
+   
+        #print("Datos del formulario que se enviarán:", json.dumps(form_data, indent=4))
         
         max_retries = 3
         for attempt in range(max_retries):
@@ -1277,16 +1347,16 @@ class NextWindow(QMainWindow):
                 response.raise_for_status()
                 if not silence:
                     self.show_message("Info", "Guardar", "Formulario guardado exitosamente.")
-                    print("Formulario guardado:", form_data)
+                    #print("Formulario guardado:", form_data)
 
                 break
             except requests.RequestException as e:
                 if attempt == max_retries - 1:
                     if not silence:
                         self.show_message("Error", "Error al guardar formulario", str(e))
-                        print(f"Error al guardar formulario: {e}")
-                else:
-                    print(f"Reintentando... intento {attempt + 1} de {max_retries}")
+                        #print(f"Error al guardar formulario: {e}")
+                #else:
+                    #print(f"Reintentando... intento {attempt + 1} de {max_retries}")
 
     def load_form(self, trabajo_id):
         self.clear_form()
@@ -1322,10 +1392,10 @@ class NextWindow(QMainWindow):
                             entry.setPlainText(entry_value)
                         elif entry_type == "QDateEdit":
                             entry.setDate(QDate.fromString(entry_value, "dd/MM/yyyy"))
-            print("Formulario cargado:", form_data)
+            #print("Formulario cargado:", form_data)
             
         except requests.RequestException as e:
-            print(f"Fallo cargar: {e}")
+            #print(f"Fallo cargar: {e}")
             self.show_message("Error", "Error al cargar formulario", str(e))
             
     def clear_form(self):
@@ -1340,7 +1410,7 @@ class NextWindow(QMainWindow):
                 entry.clear()
             elif isinstance(entry, QCheckBox):
                 entry.setChecked(False)
-        print("Formulario limpiado")
+        #print("Formulario limpiado")
 
     def submit_form(self):
         if not self.current_trabajo_id or not self.current_formulario_id:
@@ -1356,8 +1426,6 @@ class NextWindow(QMainWindow):
         self.clear_pdf_viewer()
         self.clear_pdf_list()
         self.current_trabajo_id = None
-        self.skip_inscription_button.setEnabled(False)
-        self.devolver_button.setEnabled(False)
 
     def clear_pdf_list(self):
         self.pdf_listbox.clear()
@@ -1366,7 +1434,7 @@ class NextWindow(QMainWindow):
     def clear_pdf_viewer(self):
         self.browser.setUrl(QUrl())
         
-    def update_trabajo_estado(self, estado):
+    def update_trabajo_estado(self, estado, trabajo_tipo=None):
         try:
             if not self.current_trabajo_id or not self.current_formulario_id:
                 self.show_message("Error", "Seleccionar Trabajo", "Debe seleccionar un trabajo antes de guardar.")
@@ -1374,18 +1442,25 @@ class NextWindow(QMainWindow):
             if self.current_trabajo_info['estado_anterior'] != "Terminado":
                 response = requests.post(f'{API_BASE_URL}updateTrabajoEstado', json={
                     'trabajo_id': self.current_trabajo_id,
-                    'estado': estado
+                    'estado': estado,
+                    'trabajo_tipo': trabajo_tipo
                 })
                 response.raise_for_status()
                 response_data = response.json()
                 
-                self.show_message("Info", "Estado Actualizado", f"El estado del trabajo se ha actualizado a {estado}.")
+                message = f"El estado del trabajo se ha actualizado a {estado}."
+                if trabajo_tipo is not None:
+                    message += f"\nTipo de documento actualizado a {trabajo_tipo}."
+                
+                self.show_message("Info", "Estado Actualizado", message)
                 self.scroll_area.verticalScrollBar().setValue(0)
                 
                 terminados_count = None
                 if 'terminados_count' in response_data:
                     terminados_count = response_data['terminados_count']
                     self.set_title(terminados_count)
+                    
+                self.trabajo_tipo = trabajo_tipo
 
                 history_record = {
                     "numero_trabajo":self.current_trabajo_info['numero_trabajo'],
@@ -1400,7 +1475,7 @@ class NextWindow(QMainWindow):
 
         except requests.RequestException as e:
             self.show_message("Error", "Error al actualizar estado", str(e))
-            print(f"Error al actualizar estado: {e}")
+            #print(f"Error al actualizar estado: {e}")
 
     def open_inscription_modal(self):
         if not self.current_trabajo_id or not self.current_formulario_id:
