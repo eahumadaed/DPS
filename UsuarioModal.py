@@ -129,8 +129,6 @@ class UsuarioModal(QDialog):
         
         return wrong_fields, ruts_repetidos
         
-        
-        
 
     def add_usuario(self, data=None):
         container = QFrame(self)
@@ -261,7 +259,11 @@ class UsuarioModal(QDialog):
             if self.usuario_list.itemWidget(item) == container:
                 self.usuario_list.takeItem(i)
                 break
-
+    
+    def recordar_usaurios(self, users_data):
+        for user in users_data:
+            self.parent().recordar_usuario(user, True)
+                
     def save_usuarios(self, silenc=False):
         if not self.parent().current_formulario_id:
             self.parent().show_message("Error", "Guardar", "Seleccione un trabajo antes de guardar usuarios.")
@@ -307,6 +309,8 @@ class UsuarioModal(QDialog):
                         data['genero'] = widget.currentText()
 
             usuarios_data.append(data)
+            
+        self.recordar_usaurios(usuarios_data)
 
         max_retries = 3
         for attempt in range(max_retries):
@@ -487,6 +491,19 @@ class UsuarioModal(QDialog):
             QLineEdit.focusOutEvent(entry, event)
 
     def buscar_rut(self, rut_entry, container):
+        rut =  rut_entry.text().strip()
+        if rut and rut in list(self.parent().users_list.keys()):
+            data = self.parent().users_list[rut]
+            print(data)
+            
+            container.layout().itemAtPosition(2, 3).widget().setText(data['NOMBRE'])
+            container.layout().itemAtPosition(3, 1).widget().setText(data['PATERNO'])
+            container.layout().itemAtPosition(3, 3).widget().setText(data['MATERNO'])
+            container.layout().itemAtPosition(2, 1).widget().setCurrentText(data['GENERO'])
+            container.layout().itemAtPosition(1, 3).widget().setCurrentText(data['TIPO'])
+            container.layout().itemAtPosition(1, 1).widget().setCurrentText(data['NAC'])
+            return
+        
         rut = rut_entry.text().split("-")[0]
         try:
             success, data = self.parent().buscar_rut_api(rut)

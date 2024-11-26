@@ -50,6 +50,7 @@ class NextWindow(QMainWindow):
         
         self.nombres_list = []
         self.apellidos_list = []
+        self.users_list = {}
         
         self.create_left_frame()
         self.create_middle_frame()
@@ -135,7 +136,7 @@ class NextWindow(QMainWindow):
 
 
         except (ValueError, IndexError) as e:
-            #print(f"Error al verificar rut")
+            print(f"Error al verificar rut")
             return {"rut":rut, "errorWasFounded": False}
         
     def get_datetime(self):
@@ -164,7 +165,7 @@ class NextWindow(QMainWindow):
             response.raise_for_status()
             return True, response.json()
         except Exception as e:
-            #print(f"Error al buscar RUT: {e}")
+            print(f"Error al buscar RUT: {e}")
             return False, {}
 
     def create_left_frame(self):
@@ -285,14 +286,14 @@ class NextWindow(QMainWindow):
             formulario = response.json()
             if 'id' in formulario:
                 self.current_formulario_id = formulario['id']
-                #print(f"Id 2 Del formulario:{self.current_formulario_id}")
+                print(f"Id 2 Del formulario:{self.current_formulario_id}")
                 self.fill_form(formulario)
 
             else:
                 self.fill_form(formulario)
 
                 self.current_formulario_id = formulario['id']
-                #print(f"Id 1 Del formulario:{self.current_formulario_id}")
+                print(f"Id 1 Del formulario:{self.current_formulario_id}")
         except requests.RequestException as e:
             self.show_message("Error", "Error al cargar el formulario", str(e))
             
@@ -503,7 +504,7 @@ class NextWindow(QMainWindow):
                             entry.setDate(QDate.fromString(entry_value, "dd/MM/yyyy"))
 
         
-        #print("Formulario cargado:", formulario)
+        print("Formulario cargado:", formulario)
 
     def get_info_from_trabajo_item(self, item):
         item_text = item.text()
@@ -546,7 +547,7 @@ class NextWindow(QMainWindow):
                 self.prev_estado_anterior = self.current_trabajo_info['estado_anterior']
             
             self.current_trabajo_info = self.get_info_from_trabajo_item(selected_item)
-            #print(self.current_trabajo_id)
+            print(self.current_trabajo_id)
             
             if self.prev_estado_anterior and self.current_trabajo_id and self.current_trabajo_id != selected_trabajo_id and self.prev_estado_anterior!="Terminado":
                 self.save_form(silence=True)
@@ -561,7 +562,7 @@ class NextWindow(QMainWindow):
                 self.herencia_button.setEnabled(True)
                 
             
-            #print(f"Trabajo seleccionado: {selected_trabajo_id}")
+            print(f"Trabajo seleccionado: {selected_trabajo_id}")
             self.load_formulario(selected_trabajo_id)
             self.validate_fields()
             self.clear_pdf_list()
@@ -592,7 +593,7 @@ class NextWindow(QMainWindow):
             selected_item = selected_items[0]
             index = self.pdf_listbox.row(selected_item)
             pdf_url = self.pdf_paths[index]
-            #print(f"PDF seleccionado: {pdf_url}")
+            print(f"PDF seleccionado: {pdf_url}")
             self.load_pdf(pdf_url)
 
     def load_pdf(self, encoded_pdf_path):
@@ -601,7 +602,7 @@ class NextWindow(QMainWindow):
             self.remove_highlights()
             pdf_url = f"{self.viewer_url}?file={encoded_pdf_path}#page=1"
             self.browser.load(QUrl(pdf_url))
-            #print(f"Mostrando PDF desde URL: {pdf_url}")
+            print(f"Mostrando PDF desde URL: {pdf_url}")
             #self.load_text_file(encoded_pdf_path)
         except Exception as e:
             self.show_message("Error", "Error al cargar PDF", str(e))
@@ -617,7 +618,7 @@ class NextWindow(QMainWindow):
             else:
                 self.text_edit.clear()
         except requests.RequestException as e:
-            #print(f"Error al cargar el archivo de texto: {e}")
+            print(f"Error al cargar el archivo de texto: {e}")
             self.text_edit.clear()
 
     def navigate_pdf(self, direction):
@@ -788,7 +789,7 @@ class NextWindow(QMainWindow):
         self.add_detalles_button = QPushButton("Agregar Detalles", self)
         self.add_detalles_button.clicked.connect(self.open_detalles_modal)
         self.form_layout.addWidget(self.add_detalles_button)
-        self.add_input_field("OBS", "select", ['--', 'PERFECTO', 'IMPERFECTO', 'PERFECCIONADO AL MARGEN', 'SIN RUT', 'NO SE LEE', 'NO CARGA'])
+        self.add_input_field("OBS", "select", ['--', 'PERFECTO', 'IMPERFECTO', 'PERFECCIONADO AL MARGEN', 'SIN RUT', 'NO SE LEE', 'NO CARGA', 'OTRO'])
         self.add_label("sugerencia","", "#2C3E50")
 
         self.comentario_layout = QVBoxLayout()
@@ -860,24 +861,29 @@ class NextWindow(QMainWindow):
             if label == "RUT":
                 rut_entry = entry
                 break
-
+            
         if rut_entry:
+            rut = rut_entry.text().strip()
+            if rut and rut in list(self.users_list.keys()):
+                data = self.users_list[rut]
+                self.fill_user_fields(data, from_local=True)
+                return
             rut = rut_entry.text().split("-")[0]
             success, data = self.buscar_rut_api(rut)
-            #print(f"{success} - {data}")
+            print(f"{success} - {data}")
             if success:
                 self.fill_user_fields(data)
             else:
                 self.show_message("Info", "Buscar RUT", "No se encontraron datos para el RUT ingresado.")
                 
-    def fill_user_fields(self, data):
+    def fill_user_fields(self, data, from_local=False):
         field_mapping = {
             'NAC': 'NAC',
             'TIPO': 'TIPO',
             'GENERO': 'GENERO',
-            'NOMBRE': 'Nombre',
-            'PATERNO': 'Apa',
-            'MATERNO': 'Ama'
+            'NOMBRE': 'NOMBRE' if from_local else 'Nombre',
+            'PATERNO': 'PATERNO' if from_local else 'Apa',
+            'MATERNO': 'MATERNO' if from_local else 'Ama'
         }
 
         for json_key, form_label in field_mapping.items():
@@ -903,7 +909,7 @@ class NextWindow(QMainWindow):
         else:
             viewer_url = self.viewer_url
             
-        #print(viewer_url)
+        print(viewer_url)
         
         if self.viewer_url!=viewer_url:
             self.viewer_url = viewer_url
@@ -912,7 +918,7 @@ class NextWindow(QMainWindow):
                 selected_item = selected_items[0]
                 index = self.pdf_listbox.row(selected_item)
                 pdf_url = self.pdf_paths[index]
-                #print(f"PDF seleccionado: {pdf_url}")
+                print(f"PDF seleccionado: {pdf_url}")
                 self.load_pdf(pdf_url)
         
     def remove_highlights(self):
@@ -1060,7 +1066,7 @@ class NextWindow(QMainWindow):
             parent_layout.addWidget(container, row, col)
         else:
             parent_layout.addWidget(container)
-        #print(f"Campo agregado: {label_text}, tipo: {field_type}")
+        print(f"Campo agregado: {label_text}, tipo: {field_type}")
    
     def wrap_focus_in_event(self, entry, original_event):
         def wrapped_event(event):
@@ -1203,8 +1209,11 @@ class NextWindow(QMainWindow):
                     entry.setStyleSheet("border-bottom: 2px solid red; border-radius: 0px;")
                 else:
                     entry.setStyleSheet("")
+                    
+        if get_value('OBS') == 'OTRO':
+            if not get_value('COMENTARIO'): add_wrong_entry('COMENTARIO')         
         
-        if get_value('OBS')!='NO SE LEE' and get_value('OBS')!='NO CARGA':
+        elif get_value('OBS')!='NO SE LEE' and get_value('OBS')!='NO CARGA':
             if get_value('SIN INSCRIPCION')==True:
                 labels_to_check = ['F_INSCRIPCION', 'COMUNA', 'CBR', 'FOJA', 'V', 'N°', 'AÑO']
                 for lbl in labels_to_check:
@@ -1318,7 +1327,31 @@ class NextWindow(QMainWindow):
        
         return None  # Retorna None si no se encuentra el ID
 
-    
+    def recordar_usuario(self, form_data, multiUser=False):
+        if not multiUser:
+            rut = form_data['RUT']['value'].strip()
+            if rut:
+                self.users_list[rut] = {
+                    "NAC": form_data['NAC']['value'],
+                    "TIPO": form_data['TIPO']['value'],
+                    "GENERO": form_data['GENERO']['value'],
+                    "NOMBRE": form_data['NOMBRE']['value'].strip(),
+                    "PATERNO": form_data["PATERNO"]['value'].strip(),
+                    "MATERNO": form_data["MATERNO"]['value'].strip()
+                }
+        
+        else:
+            rut = form_data['rut'].strip()
+            if rut:
+                self.users_list[rut] = {
+                    "NAC": form_data['nac'],
+                    "TIPO": form_data['tipo'],
+                    "GENERO": form_data['genero'],
+                    "NOMBRE": form_data['nombre'].strip(),
+                    "PATERNO": form_data["paterno"].strip(),
+                    "MATERNO": form_data["materno"].strip()
+                }
+                
     def save_form(self,silence=False):
         self.validate_fields()
         if not self.current_trabajo_id or not self.current_formulario_id:
@@ -1338,7 +1371,8 @@ class NextWindow(QMainWindow):
         form_data['formulario_id'] = self.current_formulario_id
         form_data['PARTERNO'] = form_data['PATERNO']
    
-        #print("Datos del formulario que se enviarán:", json.dumps(form_data, indent=4))
+        self.recordar_usuario(form_data)
+        print("Datos del formulario que se enviarán:", json.dumps(form_data, indent=4))
         
         max_retries = 3
         for attempt in range(max_retries):
@@ -1347,16 +1381,16 @@ class NextWindow(QMainWindow):
                 response.raise_for_status()
                 if not silence:
                     self.show_message("Info", "Guardar", "Formulario guardado exitosamente.")
-                    #print("Formulario guardado:", form_data)
+                    print("Formulario guardado:", form_data)
 
                 break
             except requests.RequestException as e:
                 if attempt == max_retries - 1:
                     if not silence:
                         self.show_message("Error", "Error al guardar formulario", str(e))
-                        #print(f"Error al guardar formulario: {e}")
-                #else:
-                    #print(f"Reintentando... intento {attempt + 1} de {max_retries}")
+                        print(f"Error al guardar formulario: {e}")
+                else:
+                    print(f"Reintentando... intento {attempt + 1} de {max_retries}")
 
     def load_form(self, trabajo_id):
         self.clear_form()
@@ -1392,10 +1426,10 @@ class NextWindow(QMainWindow):
                             entry.setPlainText(entry_value)
                         elif entry_type == "QDateEdit":
                             entry.setDate(QDate.fromString(entry_value, "dd/MM/yyyy"))
-            #print("Formulario cargado:", form_data)
+            print("Formulario cargado:", form_data)
             
         except requests.RequestException as e:
-            #print(f"Fallo cargar: {e}")
+            print(f"Fallo cargar: {e}")
             self.show_message("Error", "Error al cargar formulario", str(e))
             
     def clear_form(self):
@@ -1410,7 +1444,7 @@ class NextWindow(QMainWindow):
                 entry.clear()
             elif isinstance(entry, QCheckBox):
                 entry.setChecked(False)
-        #print("Formulario limpiado")
+        print("Formulario limpiado")
 
     def submit_form(self):
         if not self.current_trabajo_id or not self.current_formulario_id:
@@ -1475,7 +1509,7 @@ class NextWindow(QMainWindow):
 
         except requests.RequestException as e:
             self.show_message("Error", "Error al actualizar estado", str(e))
-            #print(f"Error al actualizar estado: {e}")
+            print(f"Error al actualizar estado: {e}")
 
     def open_inscription_modal(self):
         if not self.current_trabajo_id or not self.current_formulario_id:
